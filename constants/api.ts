@@ -2,6 +2,16 @@ import { Platform } from "react-native";
 
 const explicitApiUrl = process.env.EXPO_PUBLIC_API_URL;
 
+export const API_JSON_HEADERS = {
+  "Content-Type": "application/json",
+  "ngrok-skip-browser-warning": "true",
+};
+
+export const API_GET_HEADERS = {
+  Accept: "application/json",
+  "ngrok-skip-browser-warning": "true",
+};
+
 // For web, always use localhost. For native, use IP detection
 let baseHost: string;
 let baseDomain: string = "";

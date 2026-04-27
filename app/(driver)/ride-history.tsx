@@ -17,7 +17,6 @@ const BLACK = "#0D0D0D";
 const WHITE = "#FFFFFF";
 const TEXT_DARK = "#111111";
 const TEXT_MUTE = "#6B7280";
-const CARD = "#F5F5F5";
 const BORDER = "#E5E7EB";
 const GREEN = "#10B981";
 
@@ -42,7 +41,7 @@ export default function DriverRideHistory() {
         setLoading(true);
         const data = await getDriverRideHistory(driveId);
         setRides(data);
-      } catch (error) {
+      } catch {
         Alert.alert("Error", "Failed to load ride history");
       } finally {
         setLoading(false);

@@ -127,6 +127,8 @@ export const emitNewRideRequest = (payload: {
   pickupLat?: number;
   pickupLng?: number;
   drop: string;
+  dropLat?: number;
+  dropLng?: number;
   fare: number;
 }) => {
   const socket = getPassengerSocket();

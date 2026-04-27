@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "@/constants/api";
+import { API_JSON_HEADERS, getApiBaseUrl } from "@/constants/api";
 
 export interface UserProfile {
   _id: string;
@@ -28,7 +28,7 @@ export const fetchUserProfile = async (
 
   const response = await fetch(url, {
     method: "GET",
-    headers: { "Content-Type": "application/json" },
+    headers: API_JSON_HEADERS,
   });
 
   console.log(`[Profile API] Response status: ${response.status}`);
@@ -68,7 +68,7 @@ export const updateUserProfile = async (
     `${getApiBaseUrl()}/api/auth/profile/${userId}`,
     {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: API_JSON_HEADERS,
       body: JSON.stringify(updates),
     },
   );
@@ -85,7 +85,7 @@ export const updateUserProfile = async (
 export const logout = async (userId: string): Promise<void> => {
   const response = await fetch(`${getApiBaseUrl()}/api/auth/logout`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: API_JSON_HEADERS,
     body: JSON.stringify({ userId }),
   });
 

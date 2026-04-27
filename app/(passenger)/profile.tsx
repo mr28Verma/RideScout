@@ -13,7 +13,12 @@ import {
 
 import CustomInput from "@/components/CustomInput";
 import { detectBackendPort } from "@/constants/api";
-import { UserProfile, fetchUserProfile, logout } from "@/services/profileApi";
+import {
+  UserProfile,
+  fetchUserProfile,
+  logout,
+  updateUserProfile,
+} from "@/services/profileApi";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const INK = "#0A0A0A";
@@ -22,10 +27,9 @@ const SURFACE = "#F2F2F2";
 const RULE = "#D6D6D6";
 const MUTED = "#888888";
 const ACCENT = "#00C853";
-const ACCENT_DIM = "#00C85320";
 
 export default function PassengerProfile() {
-  const { userId: userIdParam, name: nameParam } = useLocalSearchParams<{
+  const { userId: userIdParam } = useLocalSearchParams<{
     userId?: string;
     name?: string;
   }>();
@@ -35,6 +39,7 @@ export default function PassengerProfile() {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
     detectBackendPort().catch(() => console.warn("Port detection failed"));
@@ -76,13 +81,40 @@ export default function PassengerProfile() {
           try {
             await logout(userId);
             router.replace("/");
-          } catch (error) {
+          } catch {
             Alert.alert("Error", "Failed to logout");
           }
         },
         style: "destructive",
       },
     ]);
+  };
+
+  const handleSaveProfile = async () => {
+    const nextName = editName.trim();
+
+    if (!nextName) {
+      Alert.alert("Invalid name", "Please enter your name.");
+      return;
+    }
+
+    try {
+      setSavingProfile(true);
+      const updatedProfile = await updateUserProfile(userId, {
+        name: nextName,
+      });
+      setProfile(updatedProfile);
+      setEditName(updatedProfile.name);
+      setIsEditing(false);
+      Alert.alert("Profile updated", "Your name has been saved.");
+    } catch (error) {
+      Alert.alert(
+        "Update failed",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   if (loading) {
@@ -172,12 +204,14 @@ export default function PassengerProfile() {
                 </Pressable>
                 <Pressable
                   style={[s.saveBtn, { flex: 1 }]}
-                  onPress={() => {
-                    // TODO: Implement save profile
-                    setIsEditing(false);
-                  }}
+                  onPress={handleSaveProfile}
+                  disabled={savingProfile}
                 >
-                  <Text style={s.saveBtnText}>SAVE</Text>
+                  {savingProfile ? (
+                    <ActivityIndicator color={PAPER} size="small" />
+                  ) : (
+                    <Text style={s.saveBtnText}>SAVE</Text>
+                  )}
                 </Pressable>
               </View>
             </View>

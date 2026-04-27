@@ -12,17 +12,21 @@ import {
 } from "react-native";
 
 import {
-    PendingRide,
-    acceptRide,
-    getPendingRides,
-    rejectRide,
+  PendingRide,
+  acceptRide,
+  getPendingRides,
+  rejectRide,
 } from "@/services/driverApi";
+import {
+  joinDriverRoom,
+  listenForRideRequests,
+  stopListeningForRideRequests,
+} from "@/services/driverSocket";
 
 const BLACK = "#0D0D0D";
 const WHITE = "#FFFFFF";
 const TEXT_DARK = "#111111";
 const TEXT_MUTE = "#6B7280";
-const CARD = "#F5F5F5";
 const BORDER = "#E5E7EB";
 const GREEN = "#10B981";
 const RED = "#EF4444";
@@ -36,22 +40,42 @@ export default function AvailableRides() {
   const [accepting, setAccepting] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadRides = async () => {
+    let mounted = true;
+
+    const loadInitial = async () => {
       try {
         setLoading(true);
         const data = await getPendingRides(driveId);
+        if (!mounted) return;
         setRides(data);
-      } catch (error) {
+      } catch (err) {
+        console.warn("Failed to load available rides", err);
         Alert.alert("Error", "Failed to load available rides");
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
-    loadRides();
-    const interval = setInterval(loadRides, 5000); // Refresh every 5 seconds
+    loadInitial();
 
-    return () => clearInterval(interval);
+    // Join socket room and listen for incoming rides in real-time
+    if (driveId) {
+      joinDriverRoom(driveId);
+      listenForRideRequests((ride: any) => {
+        // Avoid duplicates
+        setRides((prev) => {
+          if (prev.find((r) => r.rideId === ride.rideId)) return prev;
+          return [ride as PendingRide, ...prev];
+        });
+        // Show a quick alert
+        Alert.alert("New Ride Request", `📍 ${ride.pickup}\n💵 ₹${ride.estimatedFare}`);
+      });
+    }
+
+    return () => {
+      mounted = false;
+      stopListeningForRideRequests();
+    };
   }, [driveId]);
 
   const handleAccept = async (rideId: string, estimatedFare: number) => {
@@ -79,7 +103,7 @@ export default function AvailableRides() {
                 `Ride accepted for ₹${finalPrice}!\nNavigate to pickup location.`,
               );
               setRides((prev) => prev.filter((r) => r.rideId !== rideId));
-            } catch (error) {
+            } catch {
               Alert.alert("Error", "Could not accept ride");
             } finally {
               setAccepting(null);
@@ -96,7 +120,7 @@ export default function AvailableRides() {
     try {
       await rejectRide(rideId);
       setRides((prev) => prev.filter((r) => r.rideId !== rideId));
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "Failed to reject ride");
     }
   };

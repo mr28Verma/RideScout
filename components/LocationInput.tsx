@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import {
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 export default function LocationInput({
   placeholder,
+  value = "",
   setLocation,
   setCoords,
   darkMode = true,
@@ -19,10 +20,12 @@ export default function LocationInput({
   const [focused, setFocused] = useState(false);
   const debounceRef = useRef<any>(null);
 
-  const touchingItemRef = useRef(false);
+  // Track if user is interacting with suggestion (prevents handleBlur from clearing)
+  const isSelectingRef = useRef(false);
 
   const fetchLocations = (value: string) => {
     setQuery(value);
+    setLocation?.(value);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
@@ -71,7 +74,8 @@ export default function LocationInput({
   };
 
   const handleSelect = (place: any) => {
-    touchingItemRef.current = false;
+    console.log("🎯 ⭐ SELECTION STARTED");
+    isSelectingRef.current = true;
 
     const shortName = place.display_name.split(",")[0];
 
@@ -82,8 +86,16 @@ export default function LocationInput({
       hasSetCoords: !!setCoords,
     });
 
+    // Update local state first
     setQuery(shortName);
-    setLocation(shortName);
+
+    // Call parent setters
+    if (setLocation) {
+      console.log("📤 Calling setLocation with:", shortName);
+      setLocation(shortName);
+    } else {
+      console.error("❌ setLocation is NOT defined!");
+    }
 
     const lat = parseFloat(place.lat);
     const lon = parseFloat(place.lon);
@@ -97,6 +109,7 @@ export default function LocationInput({
     });
 
     if (setCoords) {
+      console.log("📤 Calling setCoords with:", { lat, lon });
       setCoords({
         lat,
         lon,
@@ -106,20 +119,41 @@ export default function LocationInput({
       console.warn("⚠️ setCoords is not defined!");
     }
 
+    // Clear UI state
     setSuggestions([]);
     setFocused(false);
 
-    console.log("🔚 handleSelect finished, state should update in parent");
+    // Allow blur to work again
+    setTimeout(() => {
+      isSelectingRef.current = false;
+      console.log("🔚 Selection complete");
+    }, 100);
   };
 
   const handleBlur = () => {
+    console.log(
+      "👁️ Blur event triggered, isSelecting:",
+      isSelectingRef.current,
+    );
+
+    // Don't blur if we're in the middle of selecting
+    if (isSelectingRef.current) {
+      console.log("⏸️ Blur ignored - selection in progress");
+      return;
+    }
+
     setTimeout(() => {
-      if (!touchingItemRef.current) {
+      if (!isSelectingRef.current) {
+        console.log("🗑️ Clearing dropdown on blur");
         setSuggestions([]);
         setFocused(false);
       }
     }, 10);
   };
+
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
 
   useEffect(() => {
     return () => {
@@ -179,8 +213,9 @@ export default function LocationInput({
           <TouchableOpacity
             onPress={() => {
               setQuery("");
-              setLocation("");
+              setLocation?.(""); // Explicitly clear parent state
               setSuggestions([]);
+              console.log("✕ Location cleared");
             }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
@@ -200,7 +235,17 @@ export default function LocationInput({
           {suggestions.map((item: any, index: number) => (
             <TouchableOpacity
               key={index.toString()}
-              onPress={() => handleSelect(item)}
+              onPress={() => {
+                console.log("👉 Suggestion tapped at index:", index);
+                handleSelect(item);
+              }}
+              onPressIn={() => {
+                console.log("👇 Suggestion press-in at index:", index);
+                isSelectingRef.current = true;
+              }}
+              onPressOut={() => {
+                console.log("👆 Suggestion press-out at index:", index);
+              }}
               activeOpacity={0.7}
               style={[
                 styles.item,

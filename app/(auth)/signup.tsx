@@ -10,12 +10,11 @@ import {
 } from "react-native";
 
 import CustomInput from "@/components/CustomInput";
-import { detectBackendPort, getApiBaseUrl } from "@/constants/api";
+import { API_JSON_HEADERS, detectBackendPort, getApiBaseUrl } from "@/constants/api";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const INK = "#0A0A0A";
 const PAPER = "#FFFFFF";
-const SURFACE = "#F2F2F2";
 const RULE = "#D6D6D6";
 const MUTED = "#888888";
 const ACCENT = "#00C853";
@@ -37,7 +36,7 @@ export default function Signup() {
       const apiUrl = getApiBaseUrl();
       const response = await fetch(`${apiUrl}/api/auth/signup`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: API_JSON_HEADERS,
         body: JSON.stringify({ name, email, password }),
       });
       const data = await response.json();
@@ -47,7 +46,7 @@ export default function Signup() {
       }
       Alert.alert("Success", "Account created! Please login.");
       router.replace("/");
-    } catch (error) {
+    } catch {
       Alert.alert("Network error", "Unable to connect to server.");
     } finally {
       setLoading(false);

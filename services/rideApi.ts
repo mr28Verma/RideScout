@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "@/constants/api";
+import { API_GET_HEADERS, API_JSON_HEADERS, getApiBaseUrl } from "@/constants/api";
 
 export type FareEstimate = {
   estimatedFare: number;
@@ -31,6 +31,19 @@ export type RideRecord = {
   createdAt: string;
 };
 
+async function readJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+
+  try {
+    return text ? JSON.parse(text) : ({} as T);
+  } catch {
+    const preview = text.trim().slice(0, 160) || "Empty response";
+    throw new Error(
+      `Server returned non-JSON response (${response.status}): ${preview}`,
+    );
+  }
+}
+
 export async function estimateFare(
   pickup: string,
   drop: string,
@@ -41,7 +54,7 @@ export async function estimateFare(
 ): Promise<FareEstimate> {
   const response = await fetch(`${getApiBaseUrl()}/api/rides/estimate-fare`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: API_JSON_HEADERS,
     body: JSON.stringify({
       pickup,
       drop,
@@ -52,7 +65,7 @@ export async function estimateFare(
     }),
   });
 
-  const data = await response.json();
+  const data = await readJson<FareEstimate & { message?: string }>(response);
   if (!response.ok) {
     throw new Error(data.message || "Failed to estimate fare");
   }
@@ -72,8 +85,10 @@ export async function fetchNearbyDrivers(
     `${getApiBaseUrl()}/api/rides/nearby-drivers` +
     (params.toString() ? `?${params.toString()}` : "");
 
-  const response = await fetch(url);
-  const data = await response.json();
+  const response = await fetch(url, { headers: API_GET_HEADERS });
+  const data = await readJson<{ drivers?: DriverInfo[]; message?: string }>(
+    response,
+  );
   if (!response.ok) {
     throw new Error(data.message || "Failed to fetch drivers");
   }
@@ -89,11 +104,14 @@ export async function bookRide(payload: {
 }): Promise<{ ride: { _id: string; status: RideStatus } }> {
   const response = await fetch(`${getApiBaseUrl()}/api/rides/book`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: API_JSON_HEADERS,
     body: JSON.stringify(payload),
   });
 
-  const data = await response.json();
+  const data = await readJson<{
+    ride: { _id: string; status: RideStatus };
+    message?: string;
+  }>(response);
   if (!response.ok) {
     throw new Error(data.message || "Failed to book ride");
   }
@@ -106,8 +124,11 @@ export async function fetchRideHistory(
 ): Promise<RideRecord[]> {
   const response = await fetch(
     `${getApiBaseUrl()}/api/rides/history/${passengerId}`,
+    { headers: API_GET_HEADERS },
   );
-  const data = await response.json();
+  const data = await readJson<{ rides?: RideRecord[]; message?: string }>(
+    response,
+  );
   if (!response.ok) {
     throw new Error(data.message || "Failed to fetch history");
   }

@@ -27,7 +27,7 @@ const ACCENT_DIM = "#00C85320";
 const DANGER = "#FF3B30";
 
 export default function DriverProfile() {
-  const { userId: userIdParam, name: nameParam } = useLocalSearchParams<{
+  const { userId: userIdParam } = useLocalSearchParams<{
     userId?: string;
     name?: string;
   }>();
@@ -73,7 +73,7 @@ export default function DriverProfile() {
           try {
             await logout(userId);
             router.replace("/");
-          } catch (error) {
+          } catch {
             Alert.alert("Error", "Failed to logout");
           }
         },

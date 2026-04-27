@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "@/constants/api";
+import { API_GET_HEADERS, API_JSON_HEADERS, getApiBaseUrl } from "@/constants/api";
 
 export interface PendingRide {
   rideId: string;
@@ -55,7 +55,7 @@ export const toggleOnlineStatus = async (
 ) => {
   const response = await fetch(`${getApiBaseUrl()}/api/driver/toggle-online`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: API_JSON_HEADERS,
     body: JSON.stringify({ driverId, isOnline, lat, lng }),
   });
 
@@ -75,7 +75,7 @@ export const updateDriverLocation = async (
 ) => {
   const response = await fetch(`${getApiBaseUrl()}/api/driver/location`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: API_JSON_HEADERS,
     body: JSON.stringify({ driverId, lat, lng, locationName }),
   });
 
@@ -92,6 +92,7 @@ export const getPendingRides = async (
 ): Promise<PendingRide[]> => {
   const response = await fetch(
     `${getApiBaseUrl()}/api/driver/pending-rides/${driverId}`,
+    { headers: API_GET_HEADERS },
   );
 
   if (!response.ok) {
@@ -106,7 +107,7 @@ export const getPendingRides = async (
 export const acceptRide = async (rideId: string, driverId: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/driver/accept-ride`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: API_JSON_HEADERS,
     body: JSON.stringify({ rideId, driverId }),
   });
 
@@ -121,7 +122,7 @@ export const acceptRide = async (rideId: string, driverId: string) => {
 export const rejectRide = async (rideId: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/driver/reject-ride`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: API_JSON_HEADERS,
     body: JSON.stringify({ rideId }),
   });
 
@@ -138,6 +139,7 @@ export const getDriverEarnings = async (
 ): Promise<DriverEarnings> => {
   const response = await fetch(
     `${getApiBaseUrl()}/api/driver/earnings/${driverId}`,
+    { headers: API_GET_HEADERS },
   );
 
   if (!response.ok) {
@@ -153,6 +155,7 @@ export const getDriverRideHistory = async (
 ): Promise<DriverRideRecord[]> => {
   const response = await fetch(
     `${getApiBaseUrl()}/api/driver/ride-history/${driverId}`,
+    { headers: API_GET_HEADERS },
   );
 
   if (!response.ok) {
@@ -169,6 +172,7 @@ export const getActiveTrips = async (
 ): Promise<ActiveTrip[]> => {
   const response = await fetch(
     `${getApiBaseUrl()}/api/driver/active-trips/${driverId}`,
+    { headers: API_GET_HEADERS },
   );
 
   if (!response.ok) {
@@ -183,7 +187,7 @@ export const getActiveTrips = async (
 export const updateRideStatus = async (rideId: string, status: string) => {
   const response = await fetch(`${getApiBaseUrl()}/api/driver/update-status`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: API_JSON_HEADERS,
     body: JSON.stringify({ rideId, status }),
   });
 

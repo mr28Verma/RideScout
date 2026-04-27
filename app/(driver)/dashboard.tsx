@@ -27,7 +27,6 @@ const RULE = "#D6D6D6";
 const MUTED = "#888888";
 const ACCENT = "#00C853";
 const ACCENT_DIM = "#00C85320";
-const DANGER = "#FF3B30";
 
 export default function DriverDashboard() {
   const { name: nameParam, userId: userIdParam } = useLocalSearchParams<{
@@ -178,7 +177,7 @@ export default function DriverDashboard() {
         {/* Earnings block */}
         <View style={s.earningsRow}>
           <View style={s.earningsMain}>
-            <Text style={s.sectionTag}>TODAY'S EARNINGS</Text>
+            <Text style={s.sectionTag}>TODAY EARNINGS</Text>
             <Text style={s.earningsAmount}>
               ₹{earnings?.todayEarnings ?? 0}
             </Text>

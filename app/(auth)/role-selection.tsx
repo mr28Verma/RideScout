@@ -10,7 +10,7 @@ import {
 } from "react-native";
 
 import CustomButton from "@/components/CustomButton";
-import { detectBackendPort, getApiBaseUrl } from "@/constants/api";
+import { API_JSON_HEADERS, detectBackendPort, getApiBaseUrl } from "@/constants/api";
 
 const OLIVE = "#3D4A2E";
 const AMBER = "#C8882A";
@@ -47,7 +47,7 @@ export default function RoleSelection() {
 
       const response = await fetch(`${apiUrl}/api/auth/role`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: API_JSON_HEADERS,
         body: JSON.stringify({ userId, role }),
       });
 
