@@ -1,5 +1,16 @@
 import { API_GET_HEADERS, API_JSON_HEADERS, getApiBaseUrl } from "@/constants/api";
 
+async function readError(response: Response, fallback: string) {
+  try {
+    const data = await response.json();
+    return data.error || data.message || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export type DriverTripStatus = "accepted" | "arriving" | "on_trip" | "completed";
+
 export interface PendingRide {
   rideId: string;
   passengerId: string;
@@ -8,8 +19,17 @@ export interface PendingRide {
   pickup: string;
   drop: string;
   estimatedFare: number;
+  requestedRideType: string;
   distance: string;
   eta: string;
+  bidCount: number;
+  status: string;
+  currentBid: {
+    amount: number;
+    etaMinutes: number;
+    note?: string;
+  } | null;
+  lowestBid: number | null;
   createdAt: string;
 }
 
@@ -37,7 +57,7 @@ export interface DriverRideRecord {
 
 export interface ActiveTrip {
   rideId: string;
-  status: string;
+  status: DriverTripStatus;
   passengerName: string;
   passengerPhone: string;
   passengerRating: number;
@@ -96,7 +116,7 @@ export const getPendingRides = async (
   );
 
   if (!response.ok) {
-    throw new Error("Failed to fetch pending rides");
+    throw new Error(await readError(response, "Failed to fetch pending rides"));
   }
 
   const data = await response.json();
@@ -113,6 +133,27 @@ export const acceptRide = async (rideId: string, driverId: string) => {
 
   if (!response.ok) {
     throw new Error("Failed to accept ride");
+  }
+
+  return response.json();
+};
+
+export const submitDriverBid = async (payload: {
+  rideId: string;
+  driverId: string;
+  amount: number;
+  etaMinutes: number;
+  note?: string;
+}) => {
+  const response = await fetch(`${getApiBaseUrl()}/api/rides/marketplace/bid`, {
+    method: "POST",
+    headers: API_JSON_HEADERS,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Failed to submit bid");
   }
 
   return response.json();
@@ -143,7 +184,7 @@ export const getDriverEarnings = async (
   );
 
   if (!response.ok) {
-    throw new Error("Failed to fetch earnings");
+    throw new Error(await readError(response, "Failed to fetch earnings"));
   }
 
   return response.json();
@@ -176,7 +217,7 @@ export const getActiveTrips = async (
   );
 
   if (!response.ok) {
-    throw new Error("Failed to fetch active trips");
+    throw new Error(await readError(response, "Failed to fetch active trips"));
   }
 
   const data = await response.json();
@@ -184,7 +225,10 @@ export const getActiveTrips = async (
 };
 
 // Update ride status (driver marking pickup/dropoff)
-export const updateRideStatus = async (rideId: string, status: string) => {
+export const updateRideStatus = async (
+  rideId: string,
+  status: Exclude<DriverTripStatus, "accepted">,
+) => {
   const response = await fetch(`${getApiBaseUrl()}/api/driver/update-status`, {
     method: "POST",
     headers: API_JSON_HEADERS,

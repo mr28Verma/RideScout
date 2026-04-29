@@ -45,6 +45,11 @@ export const joinDriverRoom = (driverId: string) => {
   socket.emit("driver-join", { driverId });
 };
 
+export const joinDriverRideRoom = (rideId: string, driverId: string) => {
+  const socket = getDriverSocket();
+  socket.emit("join-ride", { rideId, driverId });
+};
+
 export const goOffline = (driverId: string) => {
   const socket = getDriverSocket();
   socket.emit("driver-offline", { driverId });
@@ -55,6 +60,7 @@ export const goOffline = (driverId: string) => {
 export const listenForRideRequests = (callback: (ride: any) => void) => {
   const socket = getDriverSocket();
   socket.on("incoming-ride", callback);
+  return () => socket.off("incoming-ride", callback);
 };
 
 export const stopListeningForRideRequests = () => {
@@ -67,6 +73,24 @@ export const listenForDriverStatusUpdates = (
 ) => {
   const socket = getDriverSocket();
   socket.on("driver-status-update", callback);
+};
+
+export const listenForRideBidSelected = (callback: (payload: any) => void) => {
+  const socket = getDriverSocket();
+  socket.on("ride-bid-selected", callback);
+  return () => socket.off("ride-bid-selected", callback);
+};
+
+export const listenForRideMarketUpdates = (callback: (payload: any) => void) => {
+  const socket = getDriverSocket();
+  socket.on("ride-market-updated", callback);
+  return () => socket.off("ride-market-updated", callback);
+};
+
+export const listenForRideMessages = (callback: (payload: any) => void) => {
+  const socket = getDriverSocket();
+  socket.on("ride-message", callback);
+  return () => socket.off("ride-message", callback);
 };
 
 // ============ REAL-TIME LOCATION EVENTS ============

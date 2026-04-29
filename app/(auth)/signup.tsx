@@ -1,16 +1,20 @@
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-  Alert,
-  Pressable,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
+    Alert,
+    Pressable,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 
 import CustomInput from "@/components/CustomInput";
-import { API_JSON_HEADERS, detectBackendPort, getApiBaseUrl } from "@/constants/api";
+import {
+    API_JSON_HEADERS,
+    detectBackendPort,
+    getApiBaseUrl,
+} from "@/constants/api";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const INK = "#0A0A0A";
@@ -24,6 +28,13 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const handleProviderSignUp = (provider: "google" | "apple") => {
+    Alert.alert(
+      `${provider === "google" ? "Google" : "Apple"} sign up`,
+      "Social sign up is not connected yet. Please use email signup for now.",
+    );
+  };
 
   const handleSignup = async () => {
     if (!name || !email || !password) {
@@ -137,6 +148,23 @@ export default function Signup() {
             </View>
           )}
         </Pressable>
+
+        {/* Provider sign-up buttons */}
+        <View style={s.providerRow}>
+          <Pressable
+            style={s.providerBtn}
+            onPress={() => handleProviderSignUp("google")}
+          >
+            <Text style={s.providerBtnText}>🟦 Continue with Google</Text>
+          </Pressable>
+
+          <Pressable
+            style={s.providerBtn}
+            onPress={() => handleProviderSignUp("apple")}
+          >
+            <Text style={s.providerBtnText}> Continue with Apple</Text>
+          </Pressable>
+        </View>
 
         {/* Sign in link */}
         <View style={s.signinRow}>
@@ -320,6 +348,23 @@ const s = StyleSheet.create({
     lineHeight: 15,
   },
   termsLink: {
+    color: INK,
+    fontWeight: "700",
+  },
+  providerRow: {
+    marginTop: 12,
+    marginBottom: 12,
+    gap: 10,
+  },
+  providerBtn: {
+    borderWidth: 1,
+    borderColor: RULE,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  providerBtnText: {
     color: INK,
     fontWeight: "700",
   },

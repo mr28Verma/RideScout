@@ -23,15 +23,19 @@ const WARNING = "#F59E0B";
 const DANGER = "#DC2626";
 
 const STATUS_LABELS: Record<RideStatus, string> = {
+  bidding: "Bidding",
   searching: "Searching",
   accepted: "Accepted",
+  arriving: "Arriving",
   on_trip: "On trip",
   completed: "Completed",
 };
 
 const STATUS_COLORS: Record<RideStatus, string> = {
+  bidding: ACCENT,
   searching: WARNING,
   accepted: INK,
+  arriving: WARNING,
   on_trip: ACCENT,
   completed: ACCENT,
 };

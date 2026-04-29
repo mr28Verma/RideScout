@@ -1,16 +1,20 @@
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-    Alert,
-    Pressable,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View,
+  Alert,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import CustomInput from "@/components/CustomInput";
-import { API_JSON_HEADERS, detectBackendPort, getApiBaseUrl } from "@/constants/api";
+import {
+  API_JSON_HEADERS,
+  detectBackendPort,
+  getApiBaseUrl,
+} from "@/constants/api";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const INK = "#0A0A0A";
@@ -159,6 +163,23 @@ export default function Login() {
           <Text style={s.signUpBtnText}>CREATE AN ACCOUNT</Text>
         </Pressable>
 
+        {/* Provider sign-in buttons */}
+        <View style={s.providerRow}>
+          <Pressable
+            style={s.providerBtn}
+            onPress={() => handleProviderSignIn("google")}
+          >
+            <Text style={s.providerBtnText}>🟦 Continue with Google</Text>
+          </Pressable>
+
+          <Pressable
+            style={s.providerBtn}
+            onPress={() => handleProviderSignIn("apple")}
+          >
+            <Text style={s.providerBtnText}> Continue with Apple</Text>
+          </Pressable>
+        </View>
+
         {/* Terms */}
         <Text style={s.terms}>
           By signing in you agree to our <Text style={s.termsLink}>Terms</Text>{" "}
@@ -166,6 +187,15 @@ export default function Login() {
         </Text>
       </View>
     </View>
+  );
+}
+
+// Provider sign-in handler (stub)
+function handleProviderSignIn(provider: string) {
+  // Note: implement OAuth via Expo AuthSession / Google / Apple SDKs.
+  // This stub simply informs the developer and is safe to call during development.
+  alert(
+    `Provider sign-in (${provider}) not configured.\n\nTo enable: register an OAuth client, add redirect URIs, and implement AuthSession flow (or backend token exchange).`,
   );
 }
 
@@ -362,6 +392,23 @@ const s = StyleSheet.create({
     lineHeight: 15,
   },
   termsLink: {
+    color: INK,
+    fontWeight: "700",
+  },
+  providerRow: {
+    marginTop: 12,
+    marginBottom: 12,
+    gap: 10,
+  },
+  providerBtn: {
+    borderWidth: 1,
+    borderColor: RULE,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  providerBtnText: {
     color: INK,
     fontWeight: "700",
   },

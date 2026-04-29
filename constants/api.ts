@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 const explicitApiUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -12,21 +13,35 @@ export const API_GET_HEADERS = {
   "ngrok-skip-browser-warning": "true",
 };
 
-// For web, always use localhost. For native, use IP detection
+const extractExpoHost = () => {
+  const candidates = [
+    (Constants as any)?.expoConfig?.hostUri,
+    (Constants as any)?.manifest2?.extra?.expoClient?.hostUri,
+    (Constants as any)?.manifest?.debuggerHost,
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    const host = candidate.split(":")[0]?.trim();
+    if (host) {
+      return host;
+    }
+  }
+
+  return "";
+};
+
 let baseHost: string;
-let baseDomain: string = "";
+let baseDomain = "";
+const expoHost = extractExpoHost();
 
 if (Platform.OS === "web") {
-  // Web development: use localhost only
   baseHost = "localhost";
   baseDomain = "http://localhost";
 } else if (Platform.OS === "android") {
-  // Android: use special Android emulator IP
-  baseHost = "10.0.2.2";
+  baseHost = expoHost || "10.0.2.2";
   baseDomain = `http://${baseHost}`;
 } else {
-  // iOS and others: use localhost
-  baseHost = "127.0.0.1";
+  baseHost = expoHost || "127.0.0.1";
   baseDomain = `http://${baseHost}`;
 }
 
@@ -35,24 +50,46 @@ const portsToTry = [5002, 5001, 5000, 5003, 5004];
 let detectedPort = 5001;
 let isDetecting = false;
 let detectionPromise: Promise<number> | null = null;
+let resolvedApiUrl = explicitApiUrl || "";
 
-// Enhanced port detection with better timeout handling for React Native
-export const detectBackendPort = async (): Promise<number> => {
-  // Skip detection if explicit API URL is already set
-  if (explicitApiUrl) {
-    console.log(
-      `[Port Detection] Skipped - using explicit API URL: ${explicitApiUrl}`,
+const isReachable = async (url: string) => {
+  try {
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout")), 2500),
     );
-    return 5001; // Return dummy port, won't be used
+
+    const fetchPromise = fetch(url, {
+      method: "GET",
+      headers: API_GET_HEADERS,
+    });
+
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    return response instanceof Response && response.ok;
+  } catch {
+    return false;
+  }
+};
+
+export const detectBackendPort = async (): Promise<number> => {
+  if (explicitApiUrl) {
+    const explicitIsReachable = await isReachable(explicitApiUrl);
+
+    if (explicitIsReachable) {
+      resolvedApiUrl = explicitApiUrl;
+      console.log(`[Port Detection] Using explicit API URL: ${explicitApiUrl}`);
+      return 5001;
+    }
+
+    console.warn(
+      `[Port Detection] Explicit API URL unreachable, falling back to local detection: ${explicitApiUrl}`,
+    );
   }
 
-  // If already detecting, return the existing promise
   if (isDetecting && detectionPromise) {
     return detectionPromise;
   }
 
-  // If already detected, return immediately
-  if (detectedPort && detectedPort !== 5001) {
+  if (detectedPort && detectedPort !== 5001 && resolvedApiUrl) {
     return detectedPort;
   }
 
@@ -64,20 +101,21 @@ export const detectBackendPort = async (): Promise<number> => {
         const url = `${baseDomain}:${port}`;
         console.log(`[Port Detection] Trying ${url}...`);
 
-        // Use Promise.race with timeout for better React Native compatibility
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error("Timeout")), 2000),
         );
 
         const fetchPromise = fetch(url, {
           method: "GET",
+          headers: API_GET_HEADERS,
         });
 
         const response = await Promise.race([fetchPromise, timeoutPromise]);
 
         if (response instanceof Response && response.ok) {
           detectedPort = port;
-          console.log(`✅ Backend detected on port ${port}`);
+          resolvedApiUrl = url;
+          console.log(`[Port Detection] Backend detected on port ${port}`);
           isDetecting = false;
           return port;
         }
@@ -88,9 +126,10 @@ export const detectBackendPort = async (): Promise<number> => {
     }
 
     console.warn(
-      `⚠️  Could not detect backend (tried ${portsToTry.join(", ")}), using default port 5001`,
+      `[Port Detection] Could not detect backend (tried ${portsToTry.join(", ")}), using default port 5001`,
     );
     detectedPort = 5001;
+    resolvedApiUrl = explicitApiUrl || `${baseDomain}:${detectedPort}`;
     isDetecting = false;
     return 5001;
   })();
@@ -98,18 +137,17 @@ export const detectBackendPort = async (): Promise<number> => {
   return detectionPromise;
 };
 
-// Getter function for API_BASE_URL that uses current detected port
 export const getApiBaseUrl = () => {
-  const url = explicitApiUrl || `${baseDomain}:${detectedPort}`;
+  const url =
+    resolvedApiUrl || explicitApiUrl || `${baseDomain}:${detectedPort}`;
   console.log(`[API URL] Using: ${url}`);
   console.log(`[API URL] Env var set: ${explicitApiUrl ? "Yes" : "No"}`);
   console.log(`[API URL] Platform: ${Platform.OS}`);
+  console.log(`[API URL] Expo Host: ${expoHost || "Unavailable"}`);
   console.log(`[API URL] Detected Port: ${detectedPort}`);
   return url;
 };
 
-// For backward compatibility
 export const API_BASE_URL = getApiBaseUrl();
 
 export { detectedPort };
-

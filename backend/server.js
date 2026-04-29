@@ -13,8 +13,8 @@ const app = express();
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:8082", "http://localhost:8081"],
-    methods: ["GET", "POST"],
+    origin: (_origin, callback) => callback(null, true),
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: false,
   },
   pingInterval: 25000,
@@ -38,7 +38,7 @@ io.on("connection", (socket) => {
   console.log(`[Socket] New connection: ${socket.id}`);
 
   // ============ PASSENGER EVENTS ============
-  socket.on("join-ride", ({ rideId, passengerId }) => {
+  socket.on("join-ride", ({ rideId, passengerId, driverId }) => {
     if (!rideId) return;
     socket.join(rideId);
 
@@ -54,12 +54,17 @@ io.on("connection", (socket) => {
     if (passengerId) {
       room.passengers.add(passengerId);
     }
+    if (driverId) {
+      room.drivers.add(driverId);
+    }
 
     if (driverLocations.has(rideId)) {
       socket.emit("driver-location", driverLocations.get(rideId));
     }
 
-    console.log(`[Ride] Passenger ${passengerId} joined ride ${rideId}`);
+    console.log(
+      `[Ride] Room join for ride ${rideId} passenger=${passengerId || "-"} driver=${driverId || "-"}`,
+    );
   });
 
   // ============ DRIVER EVENTS ============

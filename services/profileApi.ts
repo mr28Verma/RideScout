@@ -1,14 +1,47 @@
 import { API_JSON_HEADERS, getApiBaseUrl } from "@/constants/api";
 
+export type RidePreference = "bike" | "mini" | "sedan" | "suv";
+
+export type SavedPlace = {
+  id: string;
+  label: string;
+  address: string;
+  lat?: number;
+  lng?: number;
+};
+
+export type PaymentMethodType = "mock" | "stripe" | "razorpay";
+
+export type PaymentMethod = {
+  id: string;
+  label: string;
+  type: PaymentMethodType;
+  last4: string;
+  isDefault: boolean;
+};
+
+export type EmergencyContact = {
+  id: string;
+  name: string;
+  phone: string;
+  relationship: string;
+};
+
 export interface UserProfile {
   _id: string;
   name: string;
   email: string;
+  phone?: string | null;
   role: "passenger" | "driver";
+  preferredRideType?: RidePreference;
+  savedPlaces?: SavedPlace[];
+  paymentMethods?: PaymentMethod[];
+  emergencyContacts?: EmergencyContact[];
   // Driver-specific fields
   isOnline?: boolean;
   vehicle?: string;
   vehicleNumber?: string;
+  currentLocation?: string | null;
   rating?: number;
   totalEarnings?: number;
   totalRides?: number;

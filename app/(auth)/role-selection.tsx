@@ -1,21 +1,26 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
-    Alert,
-    Pressable,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View,
+  Alert,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
-import CustomButton from "@/components/CustomButton";
-import { API_JSON_HEADERS, detectBackendPort, getApiBaseUrl } from "@/constants/api";
+import {
+  API_JSON_HEADERS,
+  detectBackendPort,
+  getApiBaseUrl,
+} from "@/constants/api";
 
-const OLIVE = "#3D4A2E";
-const AMBER = "#C8882A";
-const CREAM = "#F5EFE0";
-const BARK = "#6B5035";
+// Use same design tokens as Login/Signup for visual consistency
+const INK = "#0A0A0A";
+const PAPER = "#FFFFFF";
+const RULE = "#D6D6D6";
+const MUTED = "#888888";
+const ACCENT = "#00C853";
 
 type RoleType = "passenger" | "driver";
 
@@ -36,14 +41,8 @@ export default function RoleSelection() {
 
     try {
       setLoading(true);
-
-      // Detect backend port first
-      console.log("[RoleSelection] Detecting backend port...");
       await detectBackendPort();
-      console.log("[RoleSelection] Backend port detected, making API call...");
-
       const apiUrl = getApiBaseUrl();
-      console.log(`[RoleSelection] Connecting to: ${apiUrl}/api/auth/role`);
 
       const response = await fetch(`${apiUrl}/api/auth/role`, {
         method: "PATCH",
@@ -52,7 +51,6 @@ export default function RoleSelection() {
       });
 
       const data = await response.json();
-
       if (!response.ok) {
         Alert.alert("Role update failed", data.message || "Please try again.");
         return;
@@ -67,148 +65,253 @@ export default function RoleSelection() {
         },
       });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error("[RoleSelection Error]", errorMsg);
-      Alert.alert(
-        "Network error",
-        "Unable to connect to server. Make sure the backend is running on your local machine.",
-      );
+      console.error(error);
+      Alert.alert("Network error", "Unable to connect to server.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor={INK} />
 
-      <View style={styles.blobTop} />
-      <View style={styles.blobBottom} />
+      <View style={styles.accentBar} />
 
-      <View style={styles.card}>
-        <Text style={styles.cardHeading}>Choose your account type</Text>
-        <Text style={styles.cardSubtext}>
+      <View style={styles.brandSection}>
+        <View style={styles.topBar}>
+          <View style={styles.logoBadge}>
+            <Text style={styles.logoText}>RIDE</Text>
+          </View>
+        </View>
+
+        <Text style={styles.headline}>Choose{"\n"}Account Type.</Text>
+        <Text style={styles.subline}>
           This is required only once after first login.
         </Text>
 
-        <View style={styles.roleRow}>
+        <View style={styles.stepRow}>
+          <View style={styles.stepActive} />
+          <View style={styles.stepDot} />
+          <View style={styles.stepDot} />
+        </View>
+      </View>
+
+      <View style={styles.formSection}>
+        <View style={{ marginBottom: 18 }}>
+          <Text style={styles.fieldTag}>ACCOUNT ROLE</Text>
+
           <Pressable
-            style={[
-              styles.roleOption,
-              role === "passenger" && styles.roleOptionActive,
+            style={({ pressed }) => [
+              styles.roleBtn,
+              role === "passenger" && styles.roleBtnActive,
+              pressed && { opacity: 0.85 },
             ]}
             onPress={() => setRole("passenger")}
           >
-            <Text
-              style={[
-                styles.roleOptionText,
-                role === "passenger" && styles.roleOptionTextActive,
-              ]}
-            >
-              Passenger
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={{ fontSize: 20, marginRight: 12 }}>🧭</Text>
+              <View>
+                <Text
+                  style={[
+                    styles.roleTitle,
+                    role === "passenger" && styles.roleTitleActive,
+                  ]}
+                >
+                  Passenger
+                </Text>
+                <Text style={styles.roleSmall}>
+                  Request rides and track drivers in real-time.
+                </Text>
+              </View>
+            </View>
           </Pressable>
 
           <Pressable
-            style={[
-              styles.roleOption,
-              role === "driver" && styles.roleOptionActive,
+            style={({ pressed }) => [
+              styles.roleBtn,
+              role === "driver" && styles.roleBtnActive,
+              pressed && { opacity: 0.85 },
             ]}
             onPress={() => setRole("driver")}
           >
-            <Text
-              style={[
-                styles.roleOptionText,
-                role === "driver" && styles.roleOptionTextActive,
-              ]}
-            >
-              Driver
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={{ fontSize: 20, marginRight: 12 }}>🚗</Text>
+              <View>
+                <Text
+                  style={[
+                    styles.roleTitle,
+                    role === "driver" && styles.roleTitleActive,
+                  ]}
+                >
+                  Driver
+                </Text>
+                <Text style={styles.roleSmall}>
+                  Go online to receive rides, navigate to pickups and earn.
+                </Text>
+              </View>
+            </View>
           </Pressable>
         </View>
 
-        <CustomButton
-          title={loading ? "PLEASE WAIT..." : "CONTINUE"}
+        <Pressable
+          style={({ pressed }) => [
+            styles.signInBtn,
+            pressed && { opacity: 0.8 },
+          ]}
           onPress={handleContinue}
-        />
+          disabled={loading}
+        >
+          <Text style={styles.signInBtnText}>
+            {loading ? "PLEASE WAIT..." : "CONTINUE"}
+          </Text>
+          {!loading && (
+            <View style={styles.signInArrowBox}>
+              <Text style={styles.signInArrow}>→</Text>
+            </View>
+          )}
+        </Pressable>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: OLIVE,
-    justifyContent: "center",
-    paddingHorizontal: 24,
+    backgroundColor: INK,
   },
-  blobTop: {
+  accentBar: {
     position: "absolute",
-    top: -80,
-    right: -60,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "#4E5E38",
-    opacity: 0.6,
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: ACCENT,
+    zIndex: 10,
   },
-  blobBottom: {
-    position: "absolute",
-    bottom: -100,
-    left: -80,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: "#2E3820",
-    opacity: 0.8,
+  brandSection: {
+    flex: 0.42,
+    backgroundColor: INK,
+    paddingHorizontal: 28,
+    paddingTop: 52,
+    paddingBottom: 24,
+    justifyContent: "space-between",
   },
-  card: {
-    backgroundColor: CREAM,
-    borderRadius: 20,
-    padding: 28,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  cardHeading: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: OLIVE,
-    letterSpacing: 0.5,
-  },
-  cardSubtext: {
-    fontSize: 13,
-    color: BARK,
-    marginTop: 6,
-    marginBottom: 18,
-  },
-  roleRow: {
+  topBar: {
     flexDirection: "row",
-    gap: 10,
-    marginBottom: 18,
-  },
-  roleOption: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#D8C9A4",
-    borderRadius: 12,
-    paddingVertical: 12,
     alignItems: "center",
-    backgroundColor: "#F8F3E8",
   },
-  roleOptionActive: {
-    borderColor: AMBER,
-    backgroundColor: "#F0E0BE",
+  logoBadge: {
+    borderWidth: 1.5,
+    borderColor: PAPER,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  roleOptionText: {
-    color: BARK,
-    fontWeight: "700",
+  logoText: {
+    color: PAPER,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 3,
+  },
+  headline: {
+    color: PAPER,
+    fontSize: 46,
+    fontWeight: "900",
+    letterSpacing: -2,
+    lineHeight: 50,
+    marginTop: 8,
+  },
+  subline: {
+    color: MUTED,
     fontSize: 13,
+    fontWeight: "500",
+    letterSpacing: 0.3,
+    marginTop: 8,
   },
-  roleOptionTextActive: {
-    color: OLIVE,
+  stepRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+  },
+  stepActive: {
+    width: 28,
+    height: 4,
+    backgroundColor: ACCENT,
+  },
+  stepDot: {
+    width: 8,
+    height: 4,
+    backgroundColor: "#333333",
+  },
+  formSection: {
+    flex: 0.58,
+    backgroundColor: PAPER,
+    paddingHorizontal: 28,
+    paddingTop: 28,
+    paddingBottom: 24,
+  },
+  fieldTag: {
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    marginBottom: 12,
+  },
+  roleBtn: {
+    borderWidth: 1.2,
+    borderColor: RULE,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+    backgroundColor: PAPER,
+  },
+  roleBtnActive: {
+    borderColor: ACCENT,
+    backgroundColor: "#F2FFF4",
+  },
+  roleTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: INK,
+  },
+  roleTitleActive: {
+    color: ACCENT,
+  },
+  roleSmall: {
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 4,
+  },
+  signInBtn: {
+    backgroundColor: ACCENT,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 16,
+    paddingLeft: 22,
+    paddingRight: 6,
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  signInBtnText: {
+    color: INK,
+    fontWeight: "900",
+    fontSize: 13,
+    letterSpacing: 2,
+  },
+  signInArrowBox: {
+    width: 42,
+    height: 42,
+    backgroundColor: INK,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signInArrow: {
+    color: ACCENT,
+    fontSize: 18,
+    fontWeight: "300",
   },
 });

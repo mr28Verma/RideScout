@@ -1,30 +1,42 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Pressable,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
+import CustomInput from "@/components/CustomInput";
 import { detectBackendPort } from "@/constants/api";
 import { updateDriverLocation } from "@/services/driverApi";
-import { UserProfile, fetchUserProfile, logout } from "@/services/profileApi";
+import {
+  UserProfile,
+  fetchUserProfile,
+  logout,
+  updateUserProfile,
+} from "@/services/profileApi";
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const INK = "#0A0A0A";
-const PAPER = "#FFFFFF";
-const SURFACE = "#F2F2F2";
-const RULE = "#D6D6D6";
-const MUTED = "#888888";
-const ACCENT = "#00C853";
-const ACCENT_DIM = "#00C85320";
-const DANGER = "#FF3B30";
+const INK = "#081018";
+const PAPER = "#F7F4EE";
+const SURFACE = "#FFFFFF";
+const ALT_SURFACE = "#F1ECE3";
+const RULE = "#DDD5C9";
+const MUTED = "#6D685D";
+const ACCENT = "#0FA958";
+const DANGER = "#DC2626";
+
+const LOCATION_PRESETS: Record<string, { lat: number; lng: number }> = {
+  baddi: { lat: 31.2833, lng: 76.55 },
+  delhi: { lat: 28.6139, lng: 77.209 },
+  chandigarh: { lat: 30.7333, lng: 76.7794 },
+  shimla: { lat: 31.7725, lng: 77.1728 },
+  mohali: { lat: 30.6394, lng: 76.6916 },
+};
 
 export default function DriverProfile() {
   const { userId: userIdParam } = useLocalSearchParams<{
@@ -35,8 +47,11 @@ export default function DriverProfile() {
   const userId = typeof userIdParam === "string" ? userIdParam : "";
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [locationName, setLocationName] = useState("Baddi");
-  const [updatingLocation, setUpdatingLocation] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [vehicle, setVehicle] = useState("");
+  const [vehicleNumber, setVehicleNumber] = useState("");
+  const [locationName, setLocationName] = useState("");
 
   useEffect(() => {
     detectBackendPort().catch(() => console.warn("Port detection failed"));
@@ -52,9 +67,8 @@ export default function DriverProfile() {
       try {
         setLoading(true);
         const data = await fetchUserProfile(userId);
-        setProfile(data);
-      } catch (error) {
-        console.error("Failed to load profile:", error);
+        hydrate(data);
+      } catch {
         Alert.alert("Error", "Failed to load your profile");
       } finally {
         setLoading(false);
@@ -64,11 +78,34 @@ export default function DriverProfile() {
     loadProfile();
   }, [userId]);
 
+  const hydrate = (data: UserProfile) => {
+    setProfile(data);
+    setPhone(data.phone ?? "");
+    setVehicle(data.vehicle ?? "");
+    setVehicleNumber(data.vehicleNumber ?? "");
+    setLocationName(data.currentLocation ?? "");
+  };
+
+  const readinessItems = useMemo(
+    () => [
+      { label: "Phone", ready: phone.trim().length > 0 },
+      { label: "Vehicle", ready: vehicle.trim().length > 0 },
+      { label: "Plate", ready: vehicleNumber.trim().length > 0 },
+      { label: "Location", ready: locationName.trim().length > 0 },
+    ],
+    [locationName, phone, vehicle, vehicleNumber],
+  );
+
+  const readinessPercent = Math.round(
+    (readinessItems.filter((item) => item.ready).length / readinessItems.length) * 100,
+  );
+
   const handleLogout = async () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Logout",
+        style: "destructive",
         onPress: async () => {
           try {
             await logout(userId);
@@ -77,47 +114,43 @@ export default function DriverProfile() {
             Alert.alert("Error", "Failed to logout");
           }
         },
-        style: "destructive",
       },
     ]);
   };
 
-  const handleSetLocation = async () => {
-    if (!userId || !locationName.trim()) {
-      Alert.alert("Invalid", "Please enter a location name");
-      return;
-    }
+  const handleSave = async () => {
+    if (!userId) return;
 
     try {
-      setUpdatingLocation(true);
-      // For now, use mock coordinates for common locations
-      const locationCoords: { [key: string]: { lat: number; lng: number } } = {
-        baddi: { lat: 31.2833, lng: 76.55 },
-        delhi: { lat: 28.6139, lng: 77.209 },
-        chandigarh: { lat: 30.7333, lng: 76.7794 },
-        shimla: { lat: 31.7725, lng: 77.1728 },
-        mohali: { lat: 30.6394, lng: 76.6916 },
-      };
+      setSaving(true);
+      const updated = await updateUserProfile(userId, {
+        phone: phone.trim(),
+        vehicle: vehicle.trim(),
+        vehicleNumber: vehicleNumber.trim(),
+        currentLocation: locationName.trim(),
+      });
 
       const normalized = locationName.toLowerCase().trim();
-      const coords = locationCoords[normalized] || { lat: 31.2833, lng: 76.55 }; // Default to Baddi
+      const coords = LOCATION_PRESETS[normalized];
+      if (coords) {
+        await updateDriverLocation(userId, coords.lat, coords.lng, locationName.trim());
+      }
 
-      await updateDriverLocation(userId, coords.lat, coords.lng, locationName);
-      Alert.alert(
-        "Success",
-        `Location updated to ${locationName}! (${coords.lat.toFixed(4)}°, ${coords.lng.toFixed(4)}°)`,
-      );
+      hydrate(updated);
+      Alert.alert("Saved", "Your quote readiness profile is updated.");
     } catch (error) {
-      Alert.alert("Error", "Failed to update location");
-      console.error("Location update error:", error);
+      Alert.alert(
+        "Could not save profile",
+        error instanceof Error ? error.message : "Please try again.",
+      );
     } finally {
-      setUpdatingLocation(false);
+      setSaving(false);
     }
   };
 
   if (loading) {
     return (
-      <View style={s.root}>
+      <View style={s.loadingRoot}>
         <StatusBar barStyle="light-content" backgroundColor={INK} />
         <ActivityIndicator size="large" color={ACCENT} />
       </View>
@@ -126,7 +159,7 @@ export default function DriverProfile() {
 
   if (!profile) {
     return (
-      <View style={s.root}>
+      <View style={s.loadingRoot}>
         <StatusBar barStyle="light-content" backgroundColor={INK} />
         <Text style={s.errorText}>Failed to load profile</Text>
       </View>
@@ -138,423 +171,364 @@ export default function DriverProfile() {
       <StatusBar barStyle="light-content" backgroundColor={INK} />
 
       <ScrollView contentContainerStyle={s.scrollContent}>
-        {/* ── HEADER ── */}
         <View style={s.header}>
           <View style={s.headerTop}>
             <Pressable onPress={() => router.back()}>
-              <Text style={s.backBtn}>← Back</Text>
+              <Text style={s.backBtn}>Back</Text>
             </Pressable>
-            <Text style={s.headerTitle}>Driver Profile</Text>
-            <View style={{ width: 50 }} />
+            <View style={s.logoBadge}>
+              <Text style={s.logoText}>RIDE</Text>
+            </View>
           </View>
+          <Text style={s.title}>Quote readiness</Text>
+          <Text style={s.subtitle}>
+            Passengers compare confidence fast. Complete your profile so your bids land better.
+          </Text>
         </View>
 
-        {/* ── PROFILE CARD ── */}
-        <View style={s.profileCard}>
-          {/* Avatar & Basic Info */}
-          <View style={s.avatarSection}>
+        <View style={s.sheet}>
+          <View style={s.heroCard}>
             <View style={s.avatar}>
-              <Text style={s.avatarText}>
-                {profile.name.charAt(0).toUpperCase()}
-              </Text>
+              <Text style={s.avatarText}>{profile.name.charAt(0).toUpperCase()}</Text>
             </View>
-            <Text style={s.profileName}>{profile.name}</Text>
-            <Text style={s.profileEmail}>{profile.email}</Text>
-          </View>
-
-          {/* Rating & Stats */}
-          <View style={s.statsSection}>
-            <View style={s.statBox}>
-              <Text style={s.statValue}>
-                {profile.rating?.toFixed(1) || "4.5"}⭐
-              </Text>
-              <Text style={s.statLabel}>Rating</Text>
-            </View>
-            <View style={s.statDivider} />
-            <View style={s.statBox}>
-              <Text style={s.statValue}>{profile.totalRides || 0}</Text>
-              <Text style={s.statLabel}>Rides</Text>
-            </View>
-            <View style={s.statDivider} />
-            <View style={s.statBox}>
-              <Text style={s.statValue}>
-                {profile.acceptanceRate?.toFixed(0) || "100"}%
-              </Text>
-              <Text style={s.statLabel}>Acceptance</Text>
+            <View style={s.heroCopy}>
+              <Text style={s.heroName}>{profile.name}</Text>
+              <Text style={s.heroMeta}>{profile.email}</Text>
+              <Text style={s.heroAccent}>{readinessPercent}% marketplace ready</Text>
             </View>
           </View>
 
-          {/* Vehicle Info */}
-          <View style={s.infoSection}>
-            <Text style={s.sectionTitle}>VEHICLE INFORMATION</Text>
-
-            <View style={s.infoRow}>
-              <Text style={s.infoLabel}>VEHICLE</Text>
-              <Text style={s.infoValue}>
-                {profile.vehicle || "Not specified"}
-              </Text>
-            </View>
-
-            <View style={s.infoRow}>
-              <Text style={s.infoLabel}>REGISTRATION NUMBER</Text>
-              <Text style={s.infoValue}>
-                {profile.vehicleNumber || "Not specified"}
-              </Text>
-            </View>
-
-            <View style={s.infoRow}>
-              <Text style={s.infoLabel}>EARNINGS TODAY</Text>
-              <Text style={[s.infoValue, { color: ACCENT }]}>
-                ₹{profile.totalEarnings?.toLocaleString() || "0"}
-              </Text>
-            </View>
+          <View style={s.readinessCard}>
+            <Text style={s.cardTitle}>Readiness checklist</Text>
+            {readinessItems.map((item) => (
+              <View key={item.label} style={s.readinessRow}>
+                <Text style={s.readinessLabel}>{item.label}</Text>
+                <Text style={[s.readinessValue, item.ready && s.ready]}>
+                  {item.ready ? "Ready" : "Missing"}
+                </Text>
+              </View>
+            ))}
           </View>
 
-          {/* Location Setting */}
-          <View style={s.infoSection}>
-            <Text style={s.sectionTitle}>OPERATING LOCATION</Text>
-
-            <View style={s.locationInputWrapper}>
-              <TextInput
-                style={s.locationInput}
-                placeholder="Enter location (e.g., Baddi, Delhi)"
-                placeholderTextColor={MUTED}
-                value={locationName}
-                onChangeText={setLocationName}
-                editable={!updatingLocation}
-              />
-              <Pressable
-                style={[s.setLocationBtn, updatingLocation && s.disabled]}
-                onPress={handleSetLocation}
-                disabled={updatingLocation}
-              >
-                {updatingLocation ? (
-                  <ActivityIndicator color={PAPER} size="small" />
-                ) : (
-                  <Text style={s.setLocationBtnText}>📍 SET</Text>
-                )}
-              </Pressable>
-            </View>
-            <Text style={s.locationHelper}>
-              Passengers will see rides from this location
+          <View style={s.formCard}>
+            <Text style={s.cardTitle}>Marketplace details</Text>
+            <Field
+              label="PHONE"
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="+91 98765 43210"
+            />
+            <Field
+              label="VEHICLE"
+              value={vehicle}
+              onChangeText={setVehicle}
+              placeholder="Swift Dzire"
+            />
+            <Field
+              label="NUMBER PLATE"
+              value={vehicleNumber}
+              onChangeText={setVehicleNumber}
+              placeholder="HP 12 AB 1234"
+            />
+            <Field
+              label="OPERATING LOCATION"
+              value={locationName}
+              onChangeText={setLocationName}
+              placeholder="Baddi"
+            />
+            <Text style={s.helperText}>
+              Supported quick-map presets: Baddi, Delhi, Chandigarh, Shimla, Mohali.
             </Text>
+            <Pressable
+              style={[s.saveButton, saving && s.disabledButton]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color={PAPER} size="small" />
+              ) : (
+                <Text style={s.saveButtonText}>SAVE PROFILE</Text>
+              )}
+            </Pressable>
           </View>
 
-          {/* Account Info */}
-          <View style={s.infoSection}>
-            <Text style={s.sectionTitle}>ACCOUNT INFORMATION</Text>
-
-            <View style={s.infoRow}>
-              <Text style={s.infoLabel}>MEMBER SINCE</Text>
-              <Text style={s.infoValue}>
-                {profile.createdAt
-                  ? new Date(profile.createdAt).toLocaleDateString()
-                  : "N/A"}
-              </Text>
-            </View>
-
-            <View style={s.infoRow}>
-              <Text style={s.infoLabel}>STATUS</Text>
-              <Text
-                style={[
-                  s.infoValue,
-                  {
-                    color: profile.isOnline ? ACCENT : MUTED,
-                    fontWeight: "600",
-                  },
-                ]}
-              >
-                {profile.isOnline ? "● Online" : "● Offline"}
-              </Text>
-            </View>
+          <View style={s.summaryCard}>
+            <Text style={s.cardTitle}>Current stats</Text>
+            <SummaryRow
+              label="Rating"
+              value={profile.rating ? `${profile.rating.toFixed(1)} ★` : "4.5 ★"}
+            />
+            <SummaryRow
+              label="Acceptance"
+              value={
+                profile.acceptanceRate !== undefined
+                  ? `${profile.acceptanceRate.toFixed(0)}%`
+                  : "100%"
+              }
+            />
+            <SummaryRow
+              label="Rides completed"
+              value={`${profile.totalRides ?? 0}`}
+            />
+            <SummaryRow
+              label="Current location"
+              value={profile.currentLocation || "Not set"}
+            />
           </View>
-        </View>
 
-        {/* ── QUICK ACTIONS ── */}
-        <View style={s.actionsSection}>
-          <Pressable style={s.actionItem}>
-            <Text style={s.actionIcon}>📊</Text>
-            <View style={s.actionContent}>
-              <Text style={s.actionTitle}>Earnings Report</Text>
-              <Text style={s.actionSubtitle}>View detailed earnings</Text>
-            </View>
-            <Text style={s.actionArrow}>›</Text>
-          </Pressable>
-
-          <Pressable style={s.actionItem}>
-            <Text style={s.actionIcon}>⭐</Text>
-            <View style={s.actionContent}>
-              <Text style={s.actionTitle}>Ratings & Reviews</Text>
-              <Text style={s.actionSubtitle}>See what passengers think</Text>
-            </View>
-            <Text style={s.actionArrow}>›</Text>
-          </Pressable>
-
-          <Pressable style={s.actionItem}>
-            <Text style={s.actionIcon}>🛡️</Text>
-            <View style={s.actionContent}>
-              <Text style={s.actionTitle}>Security & Account</Text>
-              <Text style={s.actionSubtitle}>Manage your account settings</Text>
-            </View>
-            <Text style={s.actionArrow}>›</Text>
-          </Pressable>
-
-          <Pressable style={s.actionItem}>
-            <Text style={s.actionIcon}>📱</Text>
-            <View style={s.actionContent}>
-              <Text style={s.actionTitle}>Help & Support</Text>
-              <Text style={s.actionSubtitle}>
-                Get help from our support team
-              </Text>
-            </View>
-            <Text style={s.actionArrow}>›</Text>
+          <Pressable style={s.logoutButton} onPress={handleLogout}>
+            <Text style={s.logoutButtonText}>LOGOUT</Text>
           </Pressable>
         </View>
-
-        {/* ── LOGOUT BUTTON ── */}
-        <Pressable style={s.logoutBtn} onPress={handleLogout}>
-          <Text style={s.logoutBtnText}>LOGOUT</Text>
-        </Pressable>
-
-        <View style={s.spacer} />
       </ScrollView>
     </View>
   );
 }
 
-const s = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: PAPER,
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
+function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <View style={s.fieldBlock}>
+      <Text style={s.fieldLabel}>{label}</Text>
+      <CustomInput
+        placeholder={placeholder}
+        value={value}
+        onChangeText={onChangeText}
+        placeholderTextColor={MUTED}
+      />
+    </View>
+  );
+}
 
-  // Header
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={s.summaryRow}>
+      <Text style={s.summaryLabel}>{label}</Text>
+      <Text style={s.summaryValue}>{value}</Text>
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: INK },
+  loadingRoot: {
+    flex: 1,
+    backgroundColor: INK,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scrollContent: { paddingBottom: 40 },
   header: {
     backgroundColor: INK,
-    paddingTop: 16,
+    paddingHorizontal: 20,
+    paddingTop: 52,
     paddingBottom: 24,
   },
   headerTop: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
+    alignItems: "center",
+    marginBottom: 24,
   },
   backBtn: {
     color: ACCENT,
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "800",
   },
-  headerTitle: {
+  logoBadge: {
+    borderWidth: 1.5,
+    borderColor: PAPER,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  logoText: {
     color: PAPER,
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 3,
   },
-
-  // Profile Card
-  profileCard: {
-    margin: 16,
+  title: {
+    color: PAPER,
+    fontSize: 38,
+    fontWeight: "900",
+    lineHeight: 42,
+  },
+  subtitle: {
+    color: "#B9C1C8",
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 10,
+    maxWidth: 330,
+  },
+  sheet: {
     backgroundColor: PAPER,
-    borderRadius: 12,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    marginTop: -8,
+    padding: 16,
+    gap: 16,
+  },
+  heroCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    backgroundColor: SURFACE,
     borderWidth: 1,
     borderColor: RULE,
-    overflow: "hidden",
-  },
-
-  // Avatar & Basic Info
-  avatarSection: {
-    backgroundColor: SURFACE,
-    paddingVertical: 32,
-    alignItems: "center",
+    padding: 16,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 74,
+    height: 74,
+    borderRadius: 37,
     backgroundColor: ACCENT,
-    justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
-    elevation: 4,
+    justifyContent: "center",
   },
   avatarText: {
-    fontSize: 36,
-    fontWeight: "700",
     color: PAPER,
+    fontSize: 30,
+    fontWeight: "900",
   },
-  profileName: {
-    fontSize: 24,
-    fontWeight: "700",
+  heroCopy: { flex: 1 },
+  heroName: {
     color: INK,
-    marginBottom: 4,
+    fontSize: 24,
+    fontWeight: "900",
   },
-  profileEmail: {
-    fontSize: 13,
+  heroMeta: {
     color: MUTED,
-  },
-
-  // Stats Section
-  statsSection: {
-    flexDirection: "row",
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-    backgroundColor: ACCENT_DIM,
-  },
-  statBox: {
-    flex: 1,
-    alignItems: "center",
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: ACCENT,
-    marginBottom: 4,
-  },
-  statLabel: {
     fontSize: 12,
-    color: MUTED,
-    fontWeight: "600",
+    marginTop: 4,
   },
-  statDivider: {
-    width: 1,
-    backgroundColor: RULE,
+  heroAccent: {
+    color: ACCENT,
+    fontSize: 12,
+    fontWeight: "900",
+    marginTop: 8,
+    letterSpacing: 0.7,
   },
-
-  // Info Section
-  infoSection: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
+  readinessCard: {
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: RULE,
+    padding: 16,
+  },
+  cardTitle: {
+    color: INK,
+    fontSize: 18,
+    fontWeight: "900",
+    marginBottom: 12,
+  },
+  readinessRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: RULE,
   },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: MUTED,
-    marginBottom: 16,
-    letterSpacing: 1,
-  },
-  infoRow: {
-    marginBottom: 16,
-  },
-  infoLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: MUTED,
-    marginBottom: 4,
-  },
-  infoValue: {
-    fontSize: 16,
-    fontWeight: "500",
+  readinessLabel: {
     color: INK,
+    fontSize: 13,
+    fontWeight: "700",
   },
-
-  // Location Setting
-  locationInputWrapper: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 8,
+  readinessValue: {
+    color: DANGER,
+    fontSize: 12,
+    fontWeight: "800",
   },
-  locationInput: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  ready: {
+    color: ACCENT,
+  },
+  formCard: {
+    backgroundColor: SURFACE,
     borderWidth: 1,
     borderColor: RULE,
-    borderRadius: 8,
-    fontSize: 14,
-    color: INK,
-    backgroundColor: PAPER,
+    padding: 16,
   },
-  setLocationBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: ACCENT,
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  setLocationBtnText: {
-    color: PAPER,
-    fontWeight: "600",
-    fontSize: 12,
-  },
-  locationHelper: {
-    fontSize: 12,
-    color: MUTED,
-    fontStyle: "italic",
-  },
-  disabled: {
-    opacity: 0.6,
-  },
-
-  // Actions Section
-  actionsSection: {
-    marginHorizontal: 16,
-    marginTop: 24,
-  },
-  actionItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    backgroundColor: SURFACE,
-    borderRadius: 8,
+  fieldBlock: {
     marginBottom: 12,
   },
-  actionIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  actionContent: {
-    flex: 1,
-  },
-  actionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: INK,
-    marginBottom: 4,
-  },
-  actionSubtitle: {
-    fontSize: 12,
+  fieldLabel: {
     color: MUTED,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    marginBottom: 6,
   },
-  actionArrow: {
-    fontSize: 20,
+  helperText: {
     color: MUTED,
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 2,
   },
-
-  // Logout
-  logoutBtn: {
-    marginHorizontal: 16,
-    marginTop: 24,
-    paddingVertical: 14,
-    backgroundColor: DANGER,
-    borderRadius: 8,
+  saveButton: {
+    minHeight: 50,
+    backgroundColor: INK,
     alignItems: "center",
+    justifyContent: "center",
+    marginTop: 14,
   },
-  logoutBtnText: {
+  disabledButton: {
+    opacity: 0.65,
+  },
+  saveButtonText: {
+    color: PAPER,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.4,
+  },
+  summaryCard: {
+    backgroundColor: ALT_SURFACE,
+    borderWidth: 1,
+    borderColor: RULE,
+    padding: 16,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: RULE,
+  },
+  summaryLabel: {
+    color: MUTED,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  summaryValue: {
+    flex: 1,
+    textAlign: "right",
+    color: INK,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  logoutButton: {
+    minHeight: 52,
+    backgroundColor: DANGER,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoutButtonText: {
+    color: PAPER,
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 1.4,
+  },
+  errorText: {
+    color: DANGER,
     fontSize: 16,
     fontWeight: "700",
-    color: PAPER,
-  },
-
-  // Error
-  errorText: {
-    fontSize: 16,
-    color: DANGER,
-    textAlign: "center",
-    marginTop: 32,
-  },
-
-  spacer: {
-    height: 40,
   },
 });

@@ -44,6 +44,30 @@ export const joinRideRoom = (rideId: string, passengerId?: string) => {
   socket.emit("join-ride", { rideId, passengerId });
 };
 
+export const listenForRideMarketUpdates = (
+  callback: (payload: any) => void,
+): (() => void) => {
+  const socket = getPassengerSocket();
+  socket.on("ride-market-updated", callback);
+  return () => socket.off("ride-market-updated", callback);
+};
+
+export const listenForRideBidUpdates = (
+  callback: (payload: any) => void,
+): (() => void) => {
+  const socket = getPassengerSocket();
+  socket.on("ride-bid-updated", callback);
+  return () => socket.off("ride-bid-updated", callback);
+};
+
+export const listenForRideMessages = (
+  callback: (payload: any) => void,
+): (() => void) => {
+  const socket = getPassengerSocket();
+  socket.on("ride-message", callback);
+  return () => socket.off("ride-message", callback);
+};
+
 // ============ RIDE STATUS EVENTS ============
 
 export const listenForRideStatus = (

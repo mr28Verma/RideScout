@@ -14,15 +14,109 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    phone: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     password: {
       type: String,
       required: true,
+    },
+    sessionToken: {
+      type: String,
+      default: null,
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null,
     },
     role: {
       type: String,
       enum: ["passenger", "driver"],
       default: null,
     },
+    preferredRideType: {
+      type: String,
+      enum: ["bike", "mini", "sedan", "suv"],
+      default: "mini",
+    },
+    savedPlaces: [
+      {
+        id: {
+          type: String,
+          required: true,
+        },
+        label: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        address: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        lat: {
+          type: Number,
+          default: null,
+        },
+        lng: {
+          type: Number,
+          default: null,
+        },
+      },
+    ],
+    paymentMethods: [
+      {
+        id: {
+          type: String,
+          required: true,
+        },
+        label: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        type: {
+          type: String,
+          enum: ["mock", "stripe", "razorpay"],
+          default: "mock",
+        },
+        last4: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        isDefault: {
+          type: Boolean,
+          default: false,
+        },
+      },
+    ],
+    emergencyContacts: [
+      {
+        id: {
+          type: String,
+          required: true,
+        },
+        name: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        phone: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        relationship: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+      },
+    ],
     // Driver-specific fields
     isOnline: {
       type: Boolean,
@@ -35,6 +129,11 @@ const userSchema = new mongoose.Schema(
     vehicleNumber: {
       type: String,
       default: null,
+    },
+    currentLocation: {
+      type: String,
+      default: null,
+      trim: true,
     },
     rating: {
       type: Number,
