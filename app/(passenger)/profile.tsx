@@ -14,6 +14,7 @@ import {
 
 import CustomInput from "@/components/CustomInput";
 import { detectBackendPort } from "@/constants/api";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   EmergencyContact,
   PaymentMethod,
@@ -22,7 +23,6 @@ import {
   SavedPlace,
   UserProfile,
   fetchUserProfile,
-  logout,
   updateUserProfile,
 } from "@/services/profileApi";
 
@@ -71,6 +71,7 @@ const parseOptionalNumber = (value: string) => {
 };
 
 export default function PassengerProfile() {
+  const { logout } = useAuth();
   const { userId: userIdParam } = useLocalSearchParams<{
     userId?: string;
     name?: string;
@@ -174,8 +175,7 @@ export default function PassengerProfile() {
         style: "destructive",
         onPress: async () => {
           try {
-            await logout(userId);
-            router.replace("/");
+            await logout();
           } catch {
             Alert.alert("Error", "Failed to logout");
           }

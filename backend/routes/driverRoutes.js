@@ -1,5 +1,9 @@
 const express = require("express");
 const {
+  authenticateUser,
+  authorizeRoles,
+} = require("../middleware/authMiddleware");
+const {
   toggleOnlineStatus,
   getPendingRides,
   acceptRide,
@@ -12,6 +16,7 @@ const {
 } = require("../controllers/driverController");
 
 const router = express.Router();
+router.use(authenticateUser, authorizeRoles("driver"));
 
 // Driver status
 router.post("/toggle-online", toggleOnlineStatus);

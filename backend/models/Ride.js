@@ -51,6 +51,27 @@ const rideSchema = new mongoose.Schema(
       enum: ["mock", "stripe", "razorpay"],
       default: "mock",
     },
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "failed"],
+      default: "pending",
+    },
+    paymentOrderId: {
+      type: String,
+      default: null,
+    },
+    paymentId: {
+      type: String,
+      default: null,
+    },
+    paymentSignature: {
+      type: String,
+      default: null,
+    },
+    paymentFailureReason: {
+      type: String,
+      default: null,
+    },
     requestedRideType: {
       type: String,
       enum: ["bike", "mini", "sedan", "suv"],
@@ -132,6 +153,14 @@ const rideSchema = new mongoose.Schema(
           type: String,
           required: true,
           trim: true,
+        },
+        deliveredAt: {
+          type: Date,
+          default: Date.now,
+        },
+        seenAt: {
+          type: Date,
+          default: null,
         },
         createdAt: {
           type: Date,

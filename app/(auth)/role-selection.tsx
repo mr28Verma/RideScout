@@ -10,10 +10,9 @@ import {
 } from "react-native";
 
 import {
-  API_JSON_HEADERS,
   detectBackendPort,
-  getApiBaseUrl,
 } from "@/constants/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Use same design tokens as Login/Signup for visual consistency
 const INK = "#0A0A0A";
@@ -25,6 +24,7 @@ const ACCENT = "#00C853";
 type RoleType = "passenger" | "driver";
 
 export default function RoleSelection() {
+  const { completeRoleSelection } = useAuth();
   const { userId, name } = useLocalSearchParams<{
     userId?: string;
     name?: string;
@@ -42,19 +42,7 @@ export default function RoleSelection() {
     try {
       setLoading(true);
       await detectBackendPort();
-      const apiUrl = getApiBaseUrl();
-
-      const response = await fetch(`${apiUrl}/api/auth/role`, {
-        method: "PATCH",
-        headers: API_JSON_HEADERS,
-        body: JSON.stringify({ userId, role }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        Alert.alert("Role update failed", data.message || "Please try again.");
-        return;
-      }
+      await completeRoleSelection(role);
 
       router.replace({
         pathname:

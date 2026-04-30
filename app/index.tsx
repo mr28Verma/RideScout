@@ -1,6 +1,7 @@
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   StatusBar,
@@ -10,11 +11,7 @@ import {
 } from "react-native";
 
 import CustomInput from "@/components/CustomInput";
-import {
-  API_JSON_HEADERS,
-  detectBackendPort,
-  getApiBaseUrl,
-} from "@/constants/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const INK = "#0A0A0A";
@@ -24,9 +21,30 @@ const MUTED = "#888888";
 const ACCENT = "#00C853";
 
 export default function Login() {
+  const { isAuthenticated, isRestoring, login, session } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isRestoring || !isAuthenticated || !session?.user) return;
+
+    if (!session.user.role) {
+      router.replace({
+        pathname: "/(auth)/role-selection",
+        params: { userId: session.user.id, name: session.user.name },
+      });
+      return;
+    }
+
+    router.replace({
+      pathname:
+        session.user.role === "driver"
+          ? "/(driver)/dashboard"
+          : "/(passenger)/dashboard",
+      params: { name: session.user.name, userId: session.user.id },
+    });
+  }, [isAuthenticated, isRestoring, session]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -35,19 +53,8 @@ export default function Login() {
     }
     try {
       setLoading(true);
-      await detectBackendPort();
-      const apiUrl = getApiBaseUrl();
-      const response = await fetch(`${apiUrl}/api/auth/login`, {
-        method: "POST",
-        headers: API_JSON_HEADERS,
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        Alert.alert("Login failed", data.message || "Please try again.");
-        return;
-      }
-      const user = data.user;
+      const authSession = await login({ email, password });
+      const user = authSession.user;
       if (!user?.role) {
         router.replace({
           pathname: "/(auth)/role-selection",
@@ -62,12 +69,24 @@ export default function Login() {
             : "/(passenger)/dashboard",
         params: { name: user.name, userId: user.id },
       });
-    } catch {
-      Alert.alert("Network error", "Unable to connect to server.");
+    } catch (error) {
+      Alert.alert(
+        "Login failed",
+        error instanceof Error ? error.message : "Please try again.",
+      );
     } finally {
       setLoading(false);
     }
   };
+
+  if (isRestoring) {
+    return (
+      <View style={[s.root, { alignItems: "center", justifyContent: "center" }]}>
+        <StatusBar barStyle="light-content" backgroundColor={INK} />
+        <ActivityIndicator color={ACCENT} size="large" />
+      </View>
+    );
+  }
 
   return (
     <View style={s.root}>

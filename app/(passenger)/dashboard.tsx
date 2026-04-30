@@ -1,11 +1,12 @@
 import * as Location from "expo-location";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Linking,
   Pressable,
+  ScrollView as RNScrollView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -18,11 +19,17 @@ import LocationInput from "@/components/LocationInput";
 import RideMap from "@/components/RideMap";
 import { detectBackendPort } from "@/constants/api";
 import {
+  emitMessageSeen,
+  emitTypingStatus,
   joinRideRoom,
   listenForDriverAccepted,
+  listenForMessageReceipts,
+  listenForRideBidUpdates,
+  listenForRideMarketUpdates,
   listenForDriverLocation,
   listenForRideMessages,
   listenForRideStatus,
+  listenForTypingStatus,
   listenForTripCompleted,
   listenForTripStarted,
 } from "@/services/passengerSocket";
@@ -37,15 +44,17 @@ import {
 } from "@/services/profileApi";
 import {
   DriverInfo,
+  RideBid,
   RideMarketplace,
   RideMessage,
   RideStatus,
-  bookRide,
+  createMarketplaceRideRequest,
   estimateFare,
   fetchActiveRide,
   fetchNearbyDrivers,
   fetchRideMarketplace,
   rateCompletedRide,
+  selectDriverBid,
   sendRideMessage,
 } from "@/services/rideApi";
 
@@ -104,6 +113,36 @@ function appendUniqueMessage(
   );
 
   return exists ? current : [...current, next];
+}
+
+function withReceiptStatus(
+  messages: RideMessage[],
+  messageIds: string[],
+  status: "delivered" | "seen",
+  timestamp: string,
+) {
+  return messages.map((message) => {
+    if (!message.id || !messageIds.includes(message.id)) {
+      return message;
+    }
+
+    return {
+      ...message,
+      deliveredAt:
+        status === "delivered"
+          ? message.deliveredAt || timestamp
+          : message.deliveredAt || message.createdAt,
+      seenAt: status === "seen" ? timestamp : message.seenAt ?? null,
+    };
+  });
+}
+
+function formatMessageTimestamp(value?: string) {
+  if (!value) return "";
+  return new Date(value).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function getPassengerTripCopy(
@@ -188,6 +227,10 @@ export default function PassengerDashboard() {
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
   const [ratingScore, setRatingScore] = useState(5);
   const [ratingFeedback, setRatingFeedback] = useState("");
+  const [selectedBidDriverId, setSelectedBidDriverId] = useState("");
+  const [isDriverTyping, setIsDriverTyping] = useState(false);
+  const chatScrollRef = useRef<RNScrollView>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     detectBackendPort().catch(() => console.warn("Port detection failed"));
@@ -295,6 +338,35 @@ export default function PassengerDashboard() {
       if (payload.rideId !== rideMarket.rideId || !payload.message) return;
       setMessages((current) => appendUniqueMessage(current, payload.message));
     });
+    const offTyping = listenForTypingStatus((payload: any) => {
+      if (payload.rideId !== rideMarket.rideId || payload.senderType !== "driver") {
+        return;
+      }
+      setIsDriverTyping(Boolean(payload.isTyping));
+    });
+    const offReceipts = listenForMessageReceipts((payload: any) => {
+      if (payload.rideId !== rideMarket.rideId || !Array.isArray(payload.messageIds)) {
+        return;
+      }
+      setMessages((current) =>
+        withReceiptStatus(
+          current,
+          payload.messageIds,
+          payload.status === "seen" ? "seen" : "delivered",
+          payload.timestamp,
+        ),
+      );
+    });
+    const offBidUpdates = listenForRideBidUpdates((payload: any) => {
+      if (payload.rideId !== rideMarket.rideId) return;
+      refreshRide(rideMarket.rideId);
+    });
+    const offMarketUpdates = listenForRideMarketUpdates((payload: any) => {
+      if (payload.rideId !== rideMarket.rideId || !payload.market) return;
+      setRideMarket(payload.market);
+      setMessages(payload.market.messages ?? []);
+      setRideStatus(payload.market.status);
+    });
 
     return () => {
       offAccepted();
@@ -303,6 +375,10 @@ export default function PassengerDashboard() {
       offStarted();
       offCompleted();
       offMessages();
+      offTyping();
+      offReceipts();
+      offBidUpdates();
+      offMarketUpdates();
     };
   }, [rideMarket?.rideId, userId]);
 
@@ -334,6 +410,20 @@ export default function PassengerDashboard() {
     RIDE_TYPES[1];
 
   const selectedDriver = rideMarket?.assignedDriver ?? null;
+  const availableBids = useMemo<RideBid[]>(
+    () =>
+      (rideMarket?.bids ?? []).filter(
+        (bid) => bid.status === "pending" || bid.status === "selected",
+      ),
+    [rideMarket?.bids],
+  );
+  const selectedBid = useMemo(
+    () =>
+      availableBids.find((bid) => bid.driverId === selectedBidDriverId) ??
+      availableBids[0] ??
+      null,
+    [availableBids, selectedBidDriverId],
+  );
 
   const finalFare = useMemo(() => {
     if (!fareState) return null;
@@ -342,6 +432,52 @@ export default function PassengerDashboard() {
       Math.round(fareState.estimatedFare * selectedRideType.multiplier),
     );
   }, [fareState, selectedRideType.multiplier]);
+
+  useEffect(() => {
+    if (!availableBids.length) {
+      setSelectedBidDriverId("");
+      return;
+    }
+
+    if (!availableBids.some((bid) => bid.driverId === selectedBidDriverId)) {
+      setSelectedBidDriverId(availableBids[0].driverId);
+    }
+  }, [availableBids, selectedBidDriverId]);
+
+  useEffect(() => {
+    if (!rideMarket?.rideId) return;
+    chatScrollRef.current?.scrollToEnd({ animated: true });
+  }, [messages, isDriverTyping, rideMarket?.rideId]);
+
+  useEffect(() => {
+    if (!rideMarket?.rideId) return;
+
+    const unseenMessageIds = messages
+      .filter(
+        (message) =>
+          message.senderType === "driver" &&
+          message.id &&
+          !message.seenAt,
+      )
+      .map((message) => message.id!);
+
+    if (!unseenMessageIds.length) return;
+
+    emitMessageSeen({
+      rideId: rideMarket.rideId,
+      messageIds: unseenMessageIds,
+      seenBy: "passenger",
+    });
+
+    setMessages((current) =>
+      withReceiptStatus(
+        current,
+        unseenMessageIds,
+        "seen",
+        new Date().toISOString(),
+      ),
+    );
+  }, [messages, rideMarket?.rideId]);
 
   const refreshRide = async (rideId = rideMarket?.rideId) => {
     if (!rideId) return;
@@ -378,6 +514,7 @@ export default function PassengerDashboard() {
     setSelectedRideTypeId(profile?.preferredRideType ?? "mini");
     setRatingScore(5);
     setRatingFeedback("");
+    setSelectedBidDriverId("");
     setRouteResetKey((value) => value + 1);
   };
 
@@ -488,24 +625,20 @@ export default function PassengerDashboard() {
     }
   };
 
-  const handleBookRide = async () => {
+  const handleOpenBidMarketplace = async () => {
     if (!userId || !finalFare || !fareState) return;
 
     try {
       setIsBooking(true);
-      await processPayment(selectedPaymentMethod?.type ?? "mock", {
-        amount: finalFare,
-        currency: "INR",
-        rideId: rideMarket?.rideId || `pending-${Date.now()}`,
-      });
-
-      const response = await bookRide({
+      const response = await createMarketplaceRideRequest({
         passengerId: userId,
         pickup,
         drop,
         estimatedFare: finalFare,
         paymentMethod: selectedPaymentMethod?.type ?? "mock",
         requestedRideType: selectedRideTypeId,
+        distanceKm: fareState.distanceKm,
+        estimatedDurationMinutes: fareState.estimatedDurationMinutes ?? null,
         pickupLat: pickupCoords.lat,
         pickupLng: pickupCoords.lon,
         dropLat: dropCoords.lat,
@@ -516,13 +649,53 @@ export default function PassengerDashboard() {
       const ride = await fetchRideMarketplace(rideId);
       setRideMarket(ride);
       setMessages(ride.messages ?? []);
-      setRideStatus("searching");
-      setTrackingText("Looking for the nearest driver...");
-      setDriverEtaText("Matching now");
+      setRideStatus("bidding");
+      setTrackingText("Waiting for live driver bids");
+      setDriverEtaText("Collecting quotes now");
       joinRideRoom(rideId, userId);
     } catch (error) {
       Alert.alert(
-        "Could not book ride",
+        "Could not open bid board",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    } finally {
+      setIsBooking(false);
+    }
+  };
+
+  const handleConfirmBid = async () => {
+    if (!rideMarket?.rideId || !selectedBid || !userId) return;
+
+    try {
+      setIsBooking(true);
+      const paymentResult = await processPayment(
+        selectedPaymentMethod?.type ?? "mock",
+        {
+          amount: selectedBid.amount,
+          currency: "INR",
+          rideId: rideMarket.rideId,
+        },
+      );
+
+      if (!paymentResult.success) {
+        Alert.alert(
+          "Payment failed",
+          paymentResult.reason || "Your payment could not be completed.",
+        );
+        return;
+      }
+
+      const response = await selectDriverBid(
+        rideMarket.rideId,
+        selectedBid.driverId,
+      );
+      setRideMarket(response.ride);
+      setRideStatus("accepted");
+      setTrackingText(`${selectedBid.driverName} accepted your trip`);
+      setDriverEtaText(`${formatDuration(selectedBid.etaMinutes)} away`);
+    } catch (error) {
+      Alert.alert(
+        "Could not confirm bid",
         error instanceof Error ? error.message : "Please try again.",
       );
     } finally {
@@ -551,6 +724,39 @@ export default function PassengerDashboard() {
       );
     } finally {
       setIsSendingMessage(false);
+      emitTypingStatus({
+        rideId: rideMarket.rideId,
+        senderType: "passenger",
+        senderId: userId,
+        isTyping: false,
+      });
+    }
+  };
+
+  const handleChatDraftChange = (value: string) => {
+    setChatDraft(value);
+    if (!rideMarket?.rideId || !userId) return;
+
+    emitTypingStatus({
+      rideId: rideMarket.rideId,
+      senderType: "passenger",
+      senderId: userId,
+      isTyping: value.trim().length > 0,
+    });
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    if (value.trim().length > 0) {
+      typingTimeoutRef.current = setTimeout(() => {
+        emitTypingStatus({
+          rideId: rideMarket.rideId,
+          senderType: "passenger",
+          senderId: userId,
+          isTyping: false,
+        });
+      }, 1200);
     }
   };
 
@@ -622,8 +828,8 @@ export default function PassengerDashboard() {
           </View>
           <Text style={s.heroTitle}>Book your ride</Text>
           <Text style={s.heroSubtitle}>
-            Fast estimate, automatic driver matching, then track one assigned
-            driver all the way through the trip.
+            Estimate your route, open it to live driver bids, then confirm the
+            quote you like best.
           </Text>
         </View>
 
@@ -832,7 +1038,7 @@ export default function PassengerDashboard() {
 
           {fareState && !rideMarket && (
             <View style={s.summaryCard}>
-              <Text style={s.sectionTitle}>Booking summary</Text>
+              <Text style={s.sectionTitle}>Marketplace summary</Text>
               <SummaryRow label="Ride type" value={selectedRideType.label} />
               <SummaryRow
                 label="Payment"
@@ -844,15 +1050,96 @@ export default function PassengerDashboard() {
               />
               <Pressable
                 style={[s.primaryButton, isBooking && s.disabledButton]}
-                onPress={handleBookRide}
+                onPress={handleOpenBidMarketplace}
                 disabled={isBooking}
               >
                 {isBooking ? (
                   <ActivityIndicator color={SURFACE} />
                 ) : (
-                  <Text style={s.primaryButtonText}>Confirm ride</Text>
+                  <Text style={s.primaryButtonText}>Open ride for bids</Text>
                 )}
               </Pressable>
+            </View>
+          )}
+
+          {rideMarket?.status === "bidding" && (
+            <View style={s.section}>
+              <SectionHeader
+                title="Driver bids"
+                action="Refresh"
+                onPress={() => refreshRide()}
+              />
+              <View style={s.summaryCard}>
+                <Text style={s.sectionTitle}>Live offers</Text>
+                <SummaryRow label="Ride type" value={selectedRideType.label} />
+                <SummaryRow
+                  label="Offers"
+                  value={`${availableBids.length} received`}
+                />
+                <SummaryRow
+                  label="Best price"
+                  value={
+                    availableBids[0] ? `Rs ${availableBids[0].amount}` : "Waiting"
+                  }
+                />
+              </View>
+
+              {availableBids.length > 0 ? (
+                availableBids.map((bid) => {
+                  const selected = selectedBid?.driverId === bid.driverId;
+                  return (
+                    <Pressable
+                      key={`${bid.driverId}-${bid.createdAt}`}
+                      style={[s.bidCard, selected && s.bidCardActive]}
+                      onPress={() => setSelectedBidDriverId(bid.driverId)}
+                    >
+                      <View style={s.bidCardTop}>
+                        <View style={s.bidCopy}>
+                          <Text style={s.bidDriverName}>{bid.driverName}</Text>
+                          <Text style={s.bidMeta}>
+                            ETA {formatDuration(bid.etaMinutes)} • Rating {bid.rating}
+                          </Text>
+                        </View>
+                        <Text style={s.bidPrice}>Rs {bid.amount}</Text>
+                      </View>
+                      <Text style={s.bidMeta}>
+                        {bid.vehicle}
+                        {bid.note ? ` • ${bid.note}` : ""}
+                      </Text>
+                    </Pressable>
+                  );
+                })
+              ) : (
+                <View style={s.statusCard}>
+                  <Text style={s.waitingText}>
+                    Your route is live. Drivers can quote on it now.
+                  </Text>
+                </View>
+              )}
+
+              {selectedBid ? (
+                <View style={s.summaryCard}>
+                  <Text style={s.sectionTitle}>Selected bid</Text>
+                  <SummaryRow label="Driver" value={selectedBid.driverName} />
+                  <SummaryRow label="Price" value={`Rs ${selectedBid.amount}`} />
+                  <SummaryRow
+                    label="ETA"
+                    value={formatDuration(selectedBid.etaMinutes)}
+                  />
+                  <SummaryRow label="Rating" value={`${selectedBid.rating}`} />
+                  <Pressable
+                    style={[s.primaryButton, isBooking && s.disabledButton]}
+                    onPress={handleConfirmBid}
+                    disabled={isBooking}
+                  >
+                    {isBooking ? (
+                      <ActivityIndicator color={SURFACE} />
+                    ) : (
+                      <Text style={s.primaryButtonText}>Confirm selected bid</Text>
+                    )}
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           )}
 
@@ -943,7 +1230,14 @@ export default function PassengerDashboard() {
           {rideMarket && selectedDriver && (
             <View style={s.chatCard}>
               <Text style={s.sectionTitle}>Message driver</Text>
-              <View style={s.chatMessages}>
+              <RNScrollView
+                ref={chatScrollRef}
+                style={s.chatMessages}
+                contentContainerStyle={s.chatMessagesContent}
+                onContentSizeChange={() =>
+                  chatScrollRef.current?.scrollToEnd({ animated: true })
+                }
+              >
                 {(messages.length === 0
                   ? [
                       {
@@ -955,33 +1249,53 @@ export default function PassengerDashboard() {
                       } as RideMessage,
                     ]
                   : messages
-                ).map((message, index) => {
-                  const mine = message.senderType === "passenger";
-                  return (
-                    <View
-                      key={`${message.createdAt}-${index}`}
+                  ).map((message, index) => {
+                    const mine = message.senderType === "passenger";
+                    return (
+                      <View
+                        key={`${message.createdAt}-${index}`}
                       style={[
                         s.messageBubble,
                         mine ? s.messageMine : s.messageTheirs,
                       ]}
                     >
-                      <Text style={s.messageSender}>
-                        {mine ? "You" : message.senderName}
-                      </Text>
-                      <Text style={[s.messageText, mine && s.messageTextMine]}>
-                        {message.text}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
+                        <Text style={s.messageSender}>
+                          {mine ? "You" : message.senderName}
+                        </Text>
+                        <Text style={[s.messageText, mine && s.messageTextMine]}>
+                          {message.text}
+                        </Text>
+                        <Text
+                          style={[
+                            s.messageMeta,
+                            mine && s.messageMetaMine,
+                          ]}
+                        >
+                          {formatMessageTimestamp(message.createdAt)}
+                          {mine
+                            ? ` • ${
+                                message.seenAt
+                                  ? "Seen"
+                                  : message.deliveredAt
+                                    ? "Delivered"
+                                    : "Sending"
+                              }`
+                            : ""}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                {isDriverTyping ? (
+                  <Text style={s.typingIndicator}>Driver is typing...</Text>
+                ) : null}
+              </RNScrollView>
               <View style={s.chatComposer}>
                 <TextInput
                   style={s.chatInput}
                   placeholder="Message your driver..."
                   placeholderTextColor={MUTED}
                   value={chatDraft}
-                  onChangeText={setChatDraft}
+                  onChangeText={handleChatDraftChange}
                 />
                 <Pressable
                   style={[
@@ -1377,6 +1691,41 @@ const s = StyleSheet.create({
     fontWeight: "800",
     marginTop: 10,
   },
+  bidCard: {
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: RULE,
+    padding: 14,
+  },
+  bidCardActive: {
+    borderColor: ACCENT,
+    backgroundColor: ACCENT_SOFT,
+  },
+  bidCardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  bidCopy: {
+    flex: 1,
+  },
+  bidDriverName: {
+    color: INK,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  bidPrice: {
+    color: ACCENT,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  bidMeta: {
+    color: MUTED,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 5,
+  },
   summaryCard: {
     backgroundColor: SURFACE,
     borderWidth: 1,
@@ -1492,7 +1841,14 @@ const s = StyleSheet.create({
     borderColor: RULE,
     padding: 16,
   },
-  chatMessages: { gap: 8, marginTop: 12 },
+  chatMessages: {
+    maxHeight: 220,
+    marginTop: 12,
+  },
+  chatMessagesContent: {
+    gap: 8,
+    paddingBottom: 4,
+  },
   messageBubble: {
     maxWidth: "90%",
     padding: 10,
@@ -1517,6 +1873,20 @@ const s = StyleSheet.create({
     lineHeight: 17,
   },
   messageTextMine: { color: SURFACE },
+  messageMeta: {
+    color: MUTED,
+    fontSize: 10,
+    marginTop: 6,
+  },
+  messageMetaMine: {
+    color: "#CBD5E1",
+  },
+  typingIndicator: {
+    color: MUTED,
+    fontSize: 11,
+    fontStyle: "italic",
+    marginTop: 2,
+  },
   chatComposer: {
     flexDirection: "row",
     gap: 10,

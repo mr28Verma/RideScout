@@ -10,11 +10,8 @@ import {
 } from "react-native";
 
 import CustomInput from "@/components/CustomInput";
-import {
-    API_JSON_HEADERS,
-    detectBackendPort,
-    getApiBaseUrl,
-} from "@/constants/api";
+import { detectBackendPort } from "@/constants/api";
+import { apiFetch } from "@/services/api";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const INK = "#0A0A0A";
@@ -44,12 +41,10 @@ export default function Signup() {
     try {
       setLoading(true);
       await detectBackendPort();
-      const apiUrl = getApiBaseUrl();
-      const response = await fetch(`${apiUrl}/api/auth/signup`, {
+      const response = await apiFetch("/api/auth/signup", {
         method: "POST",
-        headers: API_JSON_HEADERS,
         body: JSON.stringify({ name, email, password }),
-      });
+      }, { requiresAuth: false, retryOn401: false });
       const data = await response.json();
       if (!response.ok) {
         Alert.alert("Signup failed", data.message || "Please try again.");

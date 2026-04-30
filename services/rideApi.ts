@@ -1,4 +1,5 @@
-import { API_GET_HEADERS, API_JSON_HEADERS, getApiBaseUrl } from "@/constants/api";
+import { API_GET_HEADERS, API_JSON_HEADERS } from "@/constants/api";
+import { apiFetch } from "@/services/api";
 
 export type FareEstimate = {
   estimatedFare: number;
@@ -49,10 +50,13 @@ export type RideBid = {
 };
 
 export type RideMessage = {
+  id?: string;
   senderType: "passenger" | "driver";
   senderId: string;
   senderName: string;
   text: string;
+  deliveredAt?: string;
+  seenAt?: string | null;
   createdAt: string;
 };
 
@@ -142,7 +146,7 @@ export async function estimateFare(
   dropLat?: number,
   dropLng?: number,
 ): Promise<FareEstimate> {
-  const response = await fetch(`${getApiBaseUrl()}/api/rides/estimate-fare`, {
+  const response = await apiFetch("/api/rides/estimate-fare", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify({
@@ -172,10 +176,9 @@ export async function fetchNearbyDrivers(
   if (pickupLng !== undefined) params.append("pickupLng", String(pickupLng));
 
   const url =
-    `${getApiBaseUrl()}/api/rides/nearby-drivers` +
-    (params.toString() ? `?${params.toString()}` : "");
+    `/api/rides/nearby-drivers` + (params.toString() ? `?${params.toString()}` : "");
 
-  const response = await fetch(url, { headers: API_GET_HEADERS });
+  const response = await apiFetch(url, { headers: API_GET_HEADERS });
   const data = await readJson<{ drivers?: DriverInfo[]; message?: string }>(
     response,
   );
@@ -194,7 +197,7 @@ export async function fetchRouteMarketIntel(payload: {
   dropLng?: number;
   passengerId?: string;
 }): Promise<RouteMarketIntel> {
-  const response = await fetch(`${getApiBaseUrl()}/api/rides/route-market-intel`, {
+  const response = await apiFetch("/api/rides/route-market-intel", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify(payload),
@@ -222,7 +225,7 @@ export async function createMarketplaceRideRequest(payload: {
   distanceKm?: number | null;
   estimatedDurationMinutes?: number | null;
 }): Promise<{ ride: RideMarketplace }> {
-  const response = await fetch(`${getApiBaseUrl()}/api/rides/marketplace-request`, {
+  const response = await apiFetch("/api/rides/marketplace-request", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify(payload),
@@ -239,7 +242,7 @@ export async function createMarketplaceRideRequest(payload: {
 export async function fetchRideMarketplace(
   rideId: string,
 ): Promise<RideMarketplace> {
-  const response = await fetch(`${getApiBaseUrl()}/api/rides/marketplace/${rideId}`, {
+  const response = await apiFetch(`/api/rides/marketplace/${rideId}`, {
     headers: API_GET_HEADERS,
   });
 
@@ -254,7 +257,7 @@ export async function fetchRideMarketplace(
 export async function fetchActiveRide(
   passengerId: string,
 ): Promise<RideMarketplace | null> {
-  const response = await fetch(`${getApiBaseUrl()}/api/rides/active/${passengerId}`, {
+  const response = await apiFetch(`/api/rides/active/${passengerId}`, {
     headers: API_GET_HEADERS,
   });
 
@@ -272,7 +275,7 @@ export async function selectDriverBid(
   rideId: string,
   driverId: string,
 ): Promise<{ ride: RideMarketplace }> {
-  const response = await fetch(`${getApiBaseUrl()}/api/rides/marketplace/select-bid`, {
+  const response = await apiFetch("/api/rides/marketplace/select-bid", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify({ rideId, driverId }),
@@ -292,7 +295,7 @@ export async function sendRideMessage(payload: {
   senderId: string;
   text: string;
 }): Promise<{ chatMessage: RideMessage }> {
-  const response = await fetch(`${getApiBaseUrl()}/api/rides/marketplace/message`, {
+  const response = await apiFetch("/api/rides/marketplace/message", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify(payload),
@@ -320,7 +323,7 @@ export async function bookRide(payload: {
   dropLat?: number;
   dropLng?: number;
 }): Promise<{ ride: RideMarketplace }> {
-  const response = await fetch(`${getApiBaseUrl()}/api/rides/book`, {
+  const response = await apiFetch("/api/rides/book", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify(payload),
@@ -340,8 +343,8 @@ export async function bookRide(payload: {
 export async function fetchRideHistory(
   passengerId: string,
 ): Promise<RideRecord[]> {
-  const response = await fetch(
-    `${getApiBaseUrl()}/api/rides/history/${passengerId}`,
+  const response = await apiFetch(
+    `/api/rides/history/${passengerId}`,
     { headers: API_GET_HEADERS },
   );
   const data = await readJson<{ rides?: RideRecord[]; message?: string }>(
@@ -360,7 +363,7 @@ export async function rateCompletedRide(payload: {
   score: number;
   feedback?: string;
 }): Promise<{ ride: RideMarketplace }> {
-  const response = await fetch(`${getApiBaseUrl()}/api/rides/rate`, {
+  const response = await apiFetch("/api/rides/rate", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify(payload),

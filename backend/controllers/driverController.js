@@ -23,6 +23,9 @@ exports.toggleOnlineStatus = async (req, res) => {
     if (!driverId) {
       return res.status(400).json({ error: "Driver ID required" });
     }
+    if (!req.user || String(req.user.userId) !== String(driverId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
     const driver = await User.findByIdAndUpdate(
       driverId,
@@ -53,6 +56,9 @@ exports.updateDriverLocation = async (req, res) => {
       return res
         .status(400)
         .json({ error: "Driver ID, lat, and lng required" });
+    }
+    if (!req.user || String(req.user.userId) !== String(driverId)) {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
     const driver = await User.findByIdAndUpdate(
@@ -89,6 +95,9 @@ exports.updateDriverLocation = async (req, res) => {
 exports.getPendingRides = async (req, res) => {
   try {
     const { driverId } = req.params;
+    if (!req.user || String(req.user.userId) !== String(driverId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
     const rides = await Ride.find({ status: { $in: ["bidding", "searching"] } })
       .populate("passengerId", "name rating")
@@ -162,6 +171,9 @@ exports.acceptRide = async (req, res) => {
 
     if (!rideId || !driverId) {
       return res.status(400).json({ error: "Ride ID and Driver ID required" });
+    }
+    if (!req.user || String(req.user.userId) !== String(driverId)) {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
     const driver = await User.findById(driverId);
@@ -302,6 +314,9 @@ exports.updateLocation = async (req, res) => {
 exports.getEarnings = async (req, res) => {
   try {
     const { driverId } = req.params;
+    if (!req.user || String(req.user.userId) !== String(driverId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
     const driver = await User.findById(driverId);
     if (!driver) {
@@ -349,6 +364,9 @@ exports.getEarnings = async (req, res) => {
 exports.getDriverRideHistory = async (req, res) => {
   try {
     const { driverId } = req.params;
+    if (!req.user || String(req.user.userId) !== String(driverId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
     const rides = await Ride.find({ driverId })
       .populate("passengerId", "name rating")
@@ -377,6 +395,9 @@ exports.getDriverRideHistory = async (req, res) => {
 exports.getActiveTrips = async (req, res) => {
   try {
     const { driverId } = req.params;
+    if (!req.user || String(req.user.userId) !== String(driverId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
     const activeRides = await Ride.find({
       driverId,
@@ -409,11 +430,16 @@ exports.updateRideStatus = async (req, res) => {
       return res.status(400).json({ error: "Ride ID and status required" });
     }
 
-    const ride = await Ride.findByIdAndUpdate(rideId, { status }, { new: true });
+    const ride = await Ride.findById(rideId);
 
     if (!ride) {
       return res.status(404).json({ error: "Ride not found" });
     }
+    if (!req.user || String(ride.driverId) !== String(req.user.userId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    ride.status = status;
 
     ride.timeline.push({
       status,

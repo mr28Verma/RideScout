@@ -1,5 +1,7 @@
 const User = require("../models/User");
+const bcrypt = require("bcrypt");
 const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
 
 const RIDE_TYPES = new Set(["bike", "mini", "sedan", "suv"]);
 const PAYMENT_TYPES = new Set(["mock", "stripe", "razorpay"]);
@@ -116,37 +118,52 @@ const serializeUserProfile = (user) => ({
   updatedAt: user.updatedAt,
 });
 
-const HASH_PREFIX = "scrypt";
+const ACCESS_TOKEN_SECRET =
+  process.env.JWT_ACCESS_SECRET || "ridescout-access-secret";
+const REFRESH_TOKEN_SECRET =
+  process.env.JWT_REFRESH_SECRET || "ridescout-refresh-secret";
+const ACCESS_TOKEN_EXPIRY = "15m";
+const REFRESH_TOKEN_EXPIRY = "7d";
+const BCRYPT_ROUNDS = 10;
 
-const hashPassword = (password) => {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
-  return `${HASH_PREFIX}:${salt}:${hash}`;
-};
+const hashPassword = (password) => bcrypt.hash(password, BCRYPT_ROUNDS);
 
-const verifyPassword = (password, storedPassword) => {
+const verifyPassword = async (password, storedPassword) => {
   if (!storedPassword) return false;
 
-  if (!storedPassword.startsWith(`${HASH_PREFIX}:`)) {
-    return storedPassword === password;
+  if (storedPassword.startsWith("$2")) {
+    return bcrypt.compare(password, storedPassword);
   }
 
-  const [, salt, hash] = storedPassword.split(":");
-  if (!salt || !hash) return false;
-
-  const candidateHash = crypto.scryptSync(password, salt, 64);
-  const storedHashBuffer = Buffer.from(hash, "hex");
-
-  if (candidateHash.length !== storedHashBuffer.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(candidateHash, storedHashBuffer);
+  return storedPassword === password;
 };
+
+const signAccessToken = (user) =>
+  jwt.sign(
+    {
+      userId: String(user._id),
+      role: user.role,
+      email: user.email,
+      name: user.name,
+    },
+    ACCESS_TOKEN_SECRET,
+    { expiresIn: ACCESS_TOKEN_EXPIRY },
+  );
+
+const signRefreshToken = (user) =>
+  jwt.sign(
+    {
+      userId: String(user._id),
+      tokenVersion: user.updatedAt?.getTime?.() || Date.now(),
+    },
+    REFRESH_TOKEN_SECRET,
+    { expiresIn: REFRESH_TOKEN_EXPIRY },
+  );
 
 const buildAuthPayload = (user) => ({
   message: "Authentication successful",
-  token: user.sessionToken,
+  accessToken: signAccessToken(user),
+  refreshToken: user.refreshToken || signRefreshToken(user),
   user: {
     id: user._id,
     name: user.name,
@@ -173,11 +190,14 @@ const signup = async (req, res) => {
     const user = await User.create({
       name: name.trim(),
       email: email.toLowerCase().trim(),
-      password: hashPassword(password),
+      password: await hashPassword(password),
       role: null,
       sessionToken: crypto.randomBytes(24).toString("hex"),
       lastLoginAt: new Date(),
     });
+
+    user.refreshToken = signRefreshToken(user);
+    await user.save();
 
     return res.status(201).json({
       ...buildAuthPayload(user),
@@ -205,21 +225,31 @@ const login = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (!verifyPassword(password, user.password)) {
+    if (!(await verifyPassword(password, user.password))) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    if (!user.password.startsWith(`${HASH_PREFIX}:`)) {
-      user.password = hashPassword(password);
+    if (!user.password.startsWith("$2")) {
+      user.password = await hashPassword(password);
     }
 
     user.sessionToken = crypto.randomBytes(24).toString("hex");
     user.lastLoginAt = new Date();
+    user.refreshToken = signRefreshToken(user);
     await user.save();
 
+    const accessToken = signAccessToken(user);
+
     return res.status(200).json({
-      ...buildAuthPayload(user),
       message: "Login successful",
+      accessToken,
+      refreshToken: user.refreshToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
     });
   } catch (error) {
     return res
@@ -240,6 +270,10 @@ const setRole = async (req, res) => {
       return res.status(400).json({ message: "Invalid role" });
     }
 
+    if (!req.user || String(req.user.userId) !== String(userId)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
     const user = await User.findByIdAndUpdate(
       userId,
       { role },
@@ -252,7 +286,7 @@ const setRole = async (req, res) => {
 
     return res.status(200).json({
       message: "Role updated successfully",
-      token: user.sessionToken,
+      accessToken: signAccessToken(user),
       user: {
         id: user._id,
         name: user.name,
@@ -275,6 +309,10 @@ const getProfile = async (req, res) => {
       return res.status(400).json({ message: "userId is required" });
     }
 
+    if (!req.user || String(req.user.userId) !== String(userId)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -295,6 +333,9 @@ const updateProfile = async (req, res) => {
 
     if (!userId) {
       return res.status(400).json({ message: "userId is required" });
+    }
+    if (!req.user || String(req.user.userId) !== String(userId)) {
+      return res.status(403).json({ message: "Forbidden" });
     }
 
     // Allowed fields for update
@@ -379,8 +420,13 @@ const logout = async (req, res) => {
       return res.status(400).json({ message: "userId is required" });
     }
 
+    if (!req.user || String(req.user.userId) !== String(userId)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
     await User.findByIdAndUpdate(userId, {
       sessionToken: null,
+      refreshToken: null,
       isOnline: false,
     });
 
@@ -394,9 +440,52 @@ const logout = async (req, res) => {
   }
 };
 
+const refreshToken = async (req, res) => {
+  try {
+    const providedRefreshToken = cleanString(req.body?.refreshToken);
+
+    if (!providedRefreshToken) {
+      return res.status(400).json({ message: "refreshToken is required" });
+    }
+
+    let payload;
+    try {
+      payload = jwt.verify(providedRefreshToken, REFRESH_TOKEN_SECRET);
+    } catch (error) {
+      return res.status(401).json({ message: "Invalid refresh token" });
+    }
+
+    const user = await User.findById(payload.userId);
+    if (!user || !user.refreshToken || user.refreshToken !== providedRefreshToken) {
+      return res.status(401).json({ message: "Refresh token not recognized" });
+    }
+
+    const nextRefreshToken = signRefreshToken(user);
+    user.refreshToken = nextRefreshToken;
+    await user.save();
+
+    return res.status(200).json({
+      message: "Token refreshed successfully",
+      accessToken: signAccessToken(user),
+      refreshToken: nextRefreshToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
+  }
+};
+
 module.exports = {
   signup,
   login,
+  refreshToken,
   setRole,
   getProfile,
   updateProfile,

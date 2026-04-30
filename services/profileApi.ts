@@ -1,4 +1,5 @@
-import { API_JSON_HEADERS, getApiBaseUrl } from "@/constants/api";
+import { API_JSON_HEADERS } from "@/constants/api";
+import { apiFetch } from "@/services/api";
 
 export type RidePreference = "bike" | "mini" | "sedan" | "suv";
 
@@ -56,10 +57,10 @@ export interface UserProfile {
 export const fetchUserProfile = async (
   userId: string,
 ): Promise<UserProfile> => {
-  const url = `${getApiBaseUrl()}/api/auth/profile/${userId}`;
+  const url = `/api/auth/profile/${userId}`;
   console.log(`[Profile API] Fetching profile from: ${url}`);
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: "GET",
     headers: API_JSON_HEADERS,
   });
@@ -97,8 +98,8 @@ export const updateUserProfile = async (
   userId: string,
   updates: Partial<UserProfile>,
 ): Promise<UserProfile> => {
-  const response = await fetch(
-    `${getApiBaseUrl()}/api/auth/profile/${userId}`,
+  const response = await apiFetch(
+    `/api/auth/profile/${userId}`,
     {
       method: "PATCH",
       headers: API_JSON_HEADERS,
@@ -116,7 +117,7 @@ export const updateUserProfile = async (
 
 // Logout (optional - can be handled on client side)
 export const logout = async (userId: string): Promise<void> => {
-  const response = await fetch(`${getApiBaseUrl()}/api/auth/logout`, {
+  const response = await apiFetch("/api/auth/logout", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify({ userId }),

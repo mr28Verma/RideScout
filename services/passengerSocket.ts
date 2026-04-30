@@ -68,6 +68,41 @@ export const listenForRideMessages = (
   return () => socket.off("ride-message", callback);
 };
 
+export const emitTypingStatus = (payload: {
+  rideId: string;
+  senderType: "passenger" | "driver";
+  senderId: string;
+  isTyping: boolean;
+}) => {
+  const socket = getPassengerSocket();
+  socket.emit("ride-typing", payload);
+};
+
+export const listenForTypingStatus = (
+  callback: (payload: any) => void,
+): (() => void) => {
+  const socket = getPassengerSocket();
+  socket.on("ride-typing", callback);
+  return () => socket.off("ride-typing", callback);
+};
+
+export const emitMessageSeen = (payload: {
+  rideId: string;
+  messageIds: string[];
+  seenBy: "passenger" | "driver";
+}) => {
+  const socket = getPassengerSocket();
+  socket.emit("ride-message-seen", payload);
+};
+
+export const listenForMessageReceipts = (
+  callback: (payload: any) => void,
+): (() => void) => {
+  const socket = getPassengerSocket();
+  socket.on("ride-message-receipt", callback);
+  return () => socket.off("ride-message-receipt", callback);
+};
+
 // ============ RIDE STATUS EVENTS ============
 
 export const listenForRideStatus = (

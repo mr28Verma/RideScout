@@ -93,6 +93,41 @@ export const listenForRideMessages = (callback: (payload: any) => void) => {
   return () => socket.off("ride-message", callback);
 };
 
+export const emitTypingStatus = (payload: {
+  rideId: string;
+  senderType: "passenger" | "driver";
+  senderId: string;
+  isTyping: boolean;
+}) => {
+  const socket = getDriverSocket();
+  socket.emit("ride-typing", payload);
+};
+
+export const listenForTypingStatus = (
+  callback: (payload: any) => void,
+) => {
+  const socket = getDriverSocket();
+  socket.on("ride-typing", callback);
+  return () => socket.off("ride-typing", callback);
+};
+
+export const emitMessageSeen = (payload: {
+  rideId: string;
+  messageIds: string[];
+  seenBy: "passenger" | "driver";
+}) => {
+  const socket = getDriverSocket();
+  socket.emit("ride-message-seen", payload);
+};
+
+export const listenForMessageReceipts = (
+  callback: (payload: any) => void,
+) => {
+  const socket = getDriverSocket();
+  socket.on("ride-message-receipt", callback);
+  return () => socket.off("ride-message-receipt", callback);
+};
+
 // ============ REAL-TIME LOCATION EVENTS ============
 
 export const sendLocationUpdate = (

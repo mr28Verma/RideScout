@@ -134,10 +134,13 @@ const serializeBid = (bid) => ({
 });
 
 const serializeMessage = (message) => ({
+  id: String(message._id || ""),
   senderType: message.senderType,
   senderId: String(message.senderId),
   senderName: message.senderName,
   text: message.text,
+  deliveredAt: message.deliveredAt || message.createdAt,
+  seenAt: message.seenAt || null,
   createdAt: message.createdAt,
 });
 
@@ -206,6 +209,22 @@ const emitRideMessage = (rideId, message) => {
     message: serializeMessage(message),
   });
 };
+
+const emitRideMessageReceipt = (rideId, payload) => {
+  const io = getIO();
+  if (!io) return;
+
+  io.to(String(rideId)).emit("ride-message-receipt", {
+    rideId: String(rideId),
+    ...payload,
+  });
+};
+
+const ensurePassengerMatchesAuth = (req, passengerId) =>
+  req.user && String(req.user.userId) === String(passengerId);
+
+const ensureDriverMatchesAuth = (req, driverId) =>
+  req.user && String(req.user.userId) === String(driverId);
 
 const calculateRoute = (pickupLat, pickupLng, dropLat, dropLng) => {
   let distanceKm = 5;
@@ -399,6 +418,9 @@ const createMarketplaceRideRequest = async (req, res) => {
         message: "passengerId, pickup, drop, and estimatedFare are required",
       });
     }
+    if (!ensurePassengerMatchesAuth(req, passengerId)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
 
     const activeRide = await Ride.findOne({
       passengerId,
@@ -491,6 +513,18 @@ const getRideMarketplace = async (req, res) => {
     if (!ride) {
       return res.status(404).json({ message: "Ride not found" });
     }
+    const requesterId = String(req.user?.userId || "");
+    const driverIds = new Set([
+      String(ride.driverId || ""),
+      String(ride.selectedBidDriverId || ""),
+      ...((ride.bids || []).map((bid) => String(bid.driverId))),
+    ]);
+    if (
+      String(ride.passengerId) !== requesterId &&
+      !driverIds.has(requesterId)
+    ) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
 
     return res.status(200).json({ ride: serializeRideMarket(ride) });
   } catch (error) {
@@ -506,6 +540,9 @@ const getPassengerActiveRide = async (req, res) => {
 
     if (!passengerId) {
       return res.status(400).json({ message: "passengerId is required" });
+    }
+    if (!ensurePassengerMatchesAuth(req, passengerId)) {
+      return res.status(403).json({ message: "Forbidden" });
     }
 
     const ride = await Ride.findOne({
@@ -531,6 +568,9 @@ const placeDriverBid = async (req, res) => {
       return res
         .status(400)
         .json({ message: "rideId, driverId, and amount are required" });
+    }
+    if (!ensureDriverMatchesAuth(req, driverId)) {
+      return res.status(403).json({ message: "Forbidden" });
     }
 
     const [ride, driver] = await Promise.all([
@@ -630,6 +670,9 @@ const selectDriverBid = async (req, res) => {
     if (!selectedBid) {
       return res.status(404).json({ message: "Bid not found" });
     }
+    if (!ensurePassengerMatchesAuth(req, ride.passengerId)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
 
     ride.status = "accepted";
     ride.driverId = driverId;
@@ -699,6 +742,15 @@ const sendRideMessage = async (req, res) => {
         message: "rideId, senderType, senderId, and text are required",
       });
     }
+    if (
+      !String(req.user?.userId || "") ||
+      String(req.user.userId) !== String(senderId) ||
+      req.user.role !== senderType
+    ) {
+      return res.status(403).json({
+        message: "Forbidden",
+      });
+    }
 
     const [ride, sender] = await Promise.all([
       Ride.findById(rideId),
@@ -714,6 +766,7 @@ const sendRideMessage = async (req, res) => {
       senderId,
       senderName: sender?.name || "RideScout User",
       text: String(text).trim(),
+      deliveredAt: new Date(),
     };
 
     if (!message.text) {
@@ -756,6 +809,9 @@ const bookRide = async (req, res) => {
       return res.status(400).json({
         message: "passengerId, pickup, drop, and estimatedFare are required",
       });
+    }
+    if (!ensurePassengerMatchesAuth(req, passengerId)) {
+      return res.status(403).json({ message: "Forbidden" });
     }
 
     const existingRide = await Ride.findOne({
@@ -842,6 +898,9 @@ const getRideHistory = async (req, res) => {
     if (!passengerId) {
       return res.status(400).json({ message: "passengerId is required" });
     }
+    if (!ensurePassengerMatchesAuth(req, passengerId)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
 
     const rides = await Ride.find({ passengerId })
       .sort({ createdAt: -1 })
@@ -863,6 +922,9 @@ const rateCompletedRide = async (req, res) => {
       return res.status(400).json({
         message: "rideId, passengerId, and score are required",
       });
+    }
+    if (!ensurePassengerMatchesAuth(req, passengerId)) {
+      return res.status(403).json({ message: "Forbidden" });
     }
 
     const numericScore = Number(score);

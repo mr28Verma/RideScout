@@ -8,6 +8,7 @@ const { setIO } = require("./socket-instance");
 const authRoutes = require("./routes/authRoutes");
 const rideRoutes = require("./routes/rideRoutes");
 const driverRoutes = require("./routes/driverRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -32,6 +33,7 @@ const driverSockets = new Map();
 const rideRooms = new Map();
 const driverLocations = new Map();
 const activeDrivers = new Map();
+const rideTypingState = new Map();
 
 // Socket.IO Connection Handler
 io.on("connection", (socket) => {
@@ -65,6 +67,50 @@ io.on("connection", (socket) => {
     console.log(
       `[Ride] Room join for ride ${rideId} passenger=${passengerId || "-"} driver=${driverId || "-"}`,
     );
+  });
+
+  socket.on("ride-typing", ({ rideId, senderType, senderId, isTyping }) => {
+    if (!rideId || !senderType || !senderId) return;
+
+    if (!rideTypingState.has(rideId)) {
+      rideTypingState.set(rideId, new Map());
+    }
+
+    const roomTypingState = rideTypingState.get(rideId);
+    const typingKey = `${senderType}:${senderId}`;
+
+    if (isTyping) {
+      roomTypingState.set(typingKey, {
+        senderType,
+        senderId,
+        isTyping: true,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      roomTypingState.delete(typingKey);
+    }
+
+    io.to(rideId).emit("ride-typing", {
+      rideId,
+      senderType,
+      senderId,
+      isTyping: Boolean(isTyping),
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  socket.on("ride-message-seen", ({ rideId, messageIds, seenBy }) => {
+    if (!rideId || !Array.isArray(messageIds) || messageIds.length === 0 || !seenBy) {
+      return;
+    }
+
+    io.to(rideId).emit("ride-message-receipt", {
+      rideId,
+      messageIds,
+      status: "seen",
+      seenBy,
+      timestamp: new Date().toISOString(),
+    });
   });
 
   // ============ DRIVER EVENTS ============
@@ -229,6 +275,7 @@ io.on("connection", (socket) => {
 
       rideRooms.delete(rideId);
       driverLocations.delete(rideId);
+      rideTypingState.delete(rideId);
 
       console.log(`[Trip] Trip ${rideId} completed`);
     },
@@ -326,6 +373,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api/rides", rideRoutes);
 app.use("/api/driver", driverRoutes);
+app.use("/api/payments", paymentRoutes);
 
 app.get("/", (_req, res) => {
   res.status(200).json({ message: "RideScout backend is running" });

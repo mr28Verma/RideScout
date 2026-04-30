@@ -1,5 +1,9 @@
 const express = require("express");
 const {
+  authenticateUser,
+  authorizeRoles,
+} = require("../middleware/authMiddleware");
+const {
   estimateFare,
   getRouteMarketIntel,
   listNearbyDrivers,
@@ -16,17 +20,19 @@ const {
 
 const router = express.Router();
 
-router.post("/estimate-fare", estimateFare);
-router.post("/route-market-intel", getRouteMarketIntel);
+router.use(authenticateUser);
+
+router.post("/estimate-fare", authorizeRoles("passenger"), estimateFare);
+router.post("/route-market-intel", authorizeRoles("passenger"), getRouteMarketIntel);
 router.get("/nearby-drivers", listNearbyDrivers);
-router.post("/marketplace-request", createMarketplaceRideRequest);
+router.post("/marketplace-request", authorizeRoles("passenger"), createMarketplaceRideRequest);
 router.get("/marketplace/:rideId", getRideMarketplace);
-router.post("/marketplace/bid", placeDriverBid);
-router.post("/marketplace/select-bid", selectDriverBid);
+router.post("/marketplace/bid", authorizeRoles("driver"), placeDriverBid);
+router.post("/marketplace/select-bid", authorizeRoles("passenger"), selectDriverBid);
 router.post("/marketplace/message", sendRideMessage);
-router.post("/book", bookRide);
-router.post("/rate", rateCompletedRide);
-router.get("/active/:passengerId", getPassengerActiveRide);
-router.get("/history/:passengerId", getRideHistory);
+router.post("/book", authorizeRoles("passenger"), bookRide);
+router.post("/rate", authorizeRoles("passenger"), rateCompletedRide);
+router.get("/active/:passengerId", authorizeRoles("passenger"), getPassengerActiveRide);
+router.get("/history/:passengerId", authorizeRoles("passenger"), getRideHistory);
 
 module.exports = router;

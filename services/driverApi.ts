@@ -1,4 +1,5 @@
-import { API_GET_HEADERS, API_JSON_HEADERS, getApiBaseUrl } from "@/constants/api";
+import { API_GET_HEADERS, API_JSON_HEADERS } from "@/constants/api";
+import { apiFetch } from "@/services/api";
 
 async function readError(response: Response, fallback: string) {
   try {
@@ -73,7 +74,7 @@ export const toggleOnlineStatus = async (
   lat?: number,
   lng?: number,
 ) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/driver/toggle-online`, {
+  const response = await apiFetch("/api/driver/toggle-online", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify({ driverId, isOnline, lat, lng }),
@@ -93,7 +94,7 @@ export const updateDriverLocation = async (
   lng: number,
   locationName?: string,
 ) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/driver/location`, {
+  const response = await apiFetch("/api/driver/location", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify({ driverId, lat, lng, locationName }),
@@ -110,8 +111,8 @@ export const updateDriverLocation = async (
 export const getPendingRides = async (
   driverId: string,
 ): Promise<PendingRide[]> => {
-  const response = await fetch(
-    `${getApiBaseUrl()}/api/driver/pending-rides/${driverId}`,
+  const response = await apiFetch(
+    `/api/driver/pending-rides/${driverId}`,
     { headers: API_GET_HEADERS },
   );
 
@@ -125,7 +126,7 @@ export const getPendingRides = async (
 
 // Accept a ride
 export const acceptRide = async (rideId: string, driverId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/driver/accept-ride`, {
+  const response = await apiFetch("/api/driver/accept-ride", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify({ rideId, driverId }),
@@ -145,7 +146,7 @@ export const submitDriverBid = async (payload: {
   etaMinutes: number;
   note?: string;
 }) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/rides/marketplace/bid`, {
+  const response = await apiFetch("/api/rides/marketplace/bid", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify(payload),
@@ -161,7 +162,7 @@ export const submitDriverBid = async (payload: {
 
 // Reject a ride
 export const rejectRide = async (rideId: string) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/driver/reject-ride`, {
+  const response = await apiFetch("/api/driver/reject-ride", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify({ rideId }),
@@ -178,8 +179,8 @@ export const rejectRide = async (rideId: string) => {
 export const getDriverEarnings = async (
   driverId: string,
 ): Promise<DriverEarnings> => {
-  const response = await fetch(
-    `${getApiBaseUrl()}/api/driver/earnings/${driverId}`,
+  const response = await apiFetch(
+    `/api/driver/earnings/${driverId}`,
     { headers: API_GET_HEADERS },
   );
 
@@ -194,8 +195,8 @@ export const getDriverEarnings = async (
 export const getDriverRideHistory = async (
   driverId: string,
 ): Promise<DriverRideRecord[]> => {
-  const response = await fetch(
-    `${getApiBaseUrl()}/api/driver/ride-history/${driverId}`,
+  const response = await apiFetch(
+    `/api/driver/ride-history/${driverId}`,
     { headers: API_GET_HEADERS },
   );
 
@@ -211,8 +212,8 @@ export const getDriverRideHistory = async (
 export const getActiveTrips = async (
   driverId: string,
 ): Promise<ActiveTrip[]> => {
-  const response = await fetch(
-    `${getApiBaseUrl()}/api/driver/active-trips/${driverId}`,
+  const response = await apiFetch(
+    `/api/driver/active-trips/${driverId}`,
     { headers: API_GET_HEADERS },
   );
 
@@ -229,7 +230,7 @@ export const updateRideStatus = async (
   rideId: string,
   status: Exclude<DriverTripStatus, "accepted">,
 ) => {
-  const response = await fetch(`${getApiBaseUrl()}/api/driver/update-status`, {
+  const response = await apiFetch("/api/driver/update-status", {
     method: "POST",
     headers: API_JSON_HEADERS,
     body: JSON.stringify({ rideId, status }),

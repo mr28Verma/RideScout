@@ -1,10 +1,11 @@
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Linking,
   Pressable,
+  ScrollView as RNScrollView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -24,10 +25,14 @@ import {
   updateRideStatus,
 } from "@/services/driverApi";
 import {
+  emitMessageSeen,
+  emitTypingStatus,
   joinDriverRideRoom,
   joinDriverRoom,
+  listenForMessageReceipts,
   listenForRideMessages,
   listenForRideRequests,
+  listenForTypingStatus,
   stopListeningForRideRequests,
 } from "@/services/driverSocket";
 import { RideMessage, RideMarketplace, fetchRideMarketplace, sendRideMessage } from "@/services/rideApi";
@@ -62,6 +67,36 @@ function appendUniqueMessage(
   return exists ? current : [...current, next];
 }
 
+function withReceiptStatus(
+  messages: RideMessage[],
+  messageIds: string[],
+  status: "delivered" | "seen",
+  timestamp: string,
+) {
+  return messages.map((message) => {
+    if (!message.id || !messageIds.includes(message.id)) {
+      return message;
+    }
+
+    return {
+      ...message,
+      deliveredAt:
+        status === "delivered"
+          ? message.deliveredAt || timestamp
+          : message.deliveredAt || message.createdAt,
+      seenAt: status === "seen" ? timestamp : message.seenAt ?? null,
+    };
+  });
+}
+
+function formatMessageTimestamp(value?: string) {
+  if (!value) return "";
+  return new Date(value).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export default function AvailableRides() {
   const { driverId } = useLocalSearchParams<{ driverId?: string }>();
   const currentDriverId = typeof driverId === "string" ? driverId : "";
@@ -77,6 +112,9 @@ export default function AvailableRides() {
   const [acceptingRideId, setAcceptingRideId] = useState("");
   const [updatingStatus, setUpdatingStatus] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [isPassengerTyping, setIsPassengerTyping] = useState(false);
+  const chatScrollRef = useRef<RNScrollView>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedTrip = useMemo(
     () => activeTrips.find((trip) => String(trip.rideId) === String(selectedTripId)) ?? null,
@@ -163,11 +201,38 @@ export default function AvailableRides() {
       if (String(payload?.rideId) !== String(selectedTripId) || !payload?.message) return;
       setMessages((current) => appendUniqueMessage(current, payload.message));
     });
+    const offTyping = listenForTypingStatus((payload: any) => {
+      if (
+        String(payload?.rideId) !== String(selectedTripId) ||
+        payload?.senderType !== "passenger"
+      ) {
+        return;
+      }
+      setIsPassengerTyping(Boolean(payload.isTyping));
+    });
+    const offReceipts = listenForMessageReceipts((payload: any) => {
+      if (
+        String(payload?.rideId) !== String(selectedTripId) ||
+        !Array.isArray(payload?.messageIds)
+      ) {
+        return;
+      }
+      setMessages((current) =>
+        withReceiptStatus(
+          current,
+          payload.messageIds,
+          payload.status === "seen" ? "seen" : "delivered",
+          payload.timestamp,
+        ),
+      );
+    });
 
     return () => {
       mounted = false;
       stopListeningForRideRequests();
       offMessages();
+      offTyping();
+      offReceipts();
     };
   }, [currentDriverId, selectedTripId]);
 
@@ -175,6 +240,41 @@ export default function AvailableRides() {
     if (!selectedTripId) return;
     refreshRide(selectedTripId);
   }, [selectedTripId]);
+
+  useEffect(() => {
+    if (!selectedTripId) return;
+    chatScrollRef.current?.scrollToEnd({ animated: true });
+  }, [messages, isPassengerTyping, selectedTripId]);
+
+  useEffect(() => {
+    if (!selectedTripId) return;
+
+    const unseenMessageIds = messages
+      .filter(
+        (message) =>
+          message.senderType === "passenger" &&
+          message.id &&
+          !message.seenAt,
+      )
+      .map((message) => message.id!);
+
+    if (!unseenMessageIds.length) return;
+
+    emitMessageSeen({
+      rideId: selectedTripId,
+      messageIds: unseenMessageIds,
+      seenBy: "driver",
+    });
+
+    setMessages((current) =>
+      withReceiptStatus(
+        current,
+        unseenMessageIds,
+        "seen",
+        new Date().toISOString(),
+      ),
+    );
+  }, [messages, selectedTripId]);
 
   const handleAcceptRide = async (ride: PendingRide) => {
     try {
@@ -251,6 +351,39 @@ export default function AvailableRides() {
       );
     } finally {
       setSendingMessage(false);
+      emitTypingStatus({
+        rideId: selectedRideMarket.rideId,
+        senderType: "driver",
+        senderId: currentDriverId,
+        isTyping: false,
+      });
+    }
+  };
+
+  const handleChatDraftChange = (value: string) => {
+    setChatDraft(value);
+    if (!selectedRideMarket?.rideId || !currentDriverId) return;
+
+    emitTypingStatus({
+      rideId: selectedRideMarket.rideId,
+      senderType: "driver",
+      senderId: currentDriverId,
+      isTyping: value.trim().length > 0,
+    });
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    if (value.trim().length > 0) {
+      typingTimeoutRef.current = setTimeout(() => {
+        emitTypingStatus({
+          rideId: selectedRideMarket.rideId,
+          senderType: "driver",
+          senderId: currentDriverId,
+          isTyping: false,
+        });
+      }, 1200);
     }
   };
 
@@ -458,7 +591,14 @@ export default function AvailableRides() {
             {selectedTrip && (
               <View style={s.chatCard}>
                 <Text style={s.sectionTitle}>Passenger chat</Text>
-                <View style={s.chatMessages}>
+                <RNScrollView
+                  ref={chatScrollRef}
+                  style={s.chatMessages}
+                  contentContainerStyle={s.chatMessagesContent}
+                  onContentSizeChange={() =>
+                    chatScrollRef.current?.scrollToEnd({ animated: true })
+                  }
+                >
                   {(messages.length === 0
                     ? [
                         {
@@ -483,17 +623,32 @@ export default function AvailableRides() {
                         <Text style={[s.messageText, mine && s.messageTextMine]}>
                           {message.text}
                         </Text>
+                        <Text style={[s.messageMeta, mine && s.messageMetaMine]}>
+                          {formatMessageTimestamp(message.createdAt)}
+                          {mine
+                            ? ` • ${
+                                message.seenAt
+                                  ? "Seen"
+                                  : message.deliveredAt
+                                    ? "Delivered"
+                                    : "Sending"
+                              }`
+                            : ""}
+                        </Text>
                       </View>
                     );
                   })}
-                </View>
+                  {isPassengerTyping ? (
+                    <Text style={s.typingIndicator}>Passenger is typing...</Text>
+                  ) : null}
+                </RNScrollView>
                 <View style={s.chatComposer}>
                   <TextInput
                     style={s.chatInput}
                     placeholder="Message passenger..."
                     placeholderTextColor={MUTED}
                     value={chatDraft}
-                    onChangeText={setChatDraft}
+                    onChangeText={handleChatDraftChange}
                   />
                   <Pressable
                     style={[
@@ -759,7 +914,14 @@ const s = StyleSheet.create({
     borderColor: RULE,
     padding: 16,
   },
-  chatMessages: { gap: 8, marginTop: 12 },
+  chatMessages: {
+    maxHeight: 220,
+    marginTop: 12,
+  },
+  chatMessagesContent: {
+    gap: 8,
+    paddingBottom: 4,
+  },
   messageBubble: {
     maxWidth: "90%",
     padding: 10,
@@ -785,6 +947,20 @@ const s = StyleSheet.create({
   },
   messageTextMine: {
     color: SURFACE,
+  },
+  messageMeta: {
+    color: MUTED,
+    fontSize: 10,
+    marginTop: 6,
+  },
+  messageMetaMine: {
+    color: "#CBD5E1",
+  },
+  typingIndicator: {
+    color: MUTED,
+    fontSize: 11,
+    fontStyle: "italic",
+    marginTop: 2,
   },
   chatComposer: {
     flexDirection: "row",
